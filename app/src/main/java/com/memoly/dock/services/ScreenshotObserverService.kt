@@ -9,18 +9,19 @@ import android.provider.MediaStore
 import com.memoly.dock.data.local.MemolyDatabase
 import com.memoly.dock.data.model.MemoryItem
 import com.memoly.dock.domain.model.ContentType
+import com.memoly.dock.settings.AppPreferences
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 
 /**
  * Efficient screenshot observer using MediaStore ContentObserver.
  *
- * Fix: Debounces by actual image ID (not observer URI) and checks the
- * database before inserting to prevent duplicates. ContentObserver.onChange()
- * can fire 30-50+ times per screenshot on some devices (Vivo, Samsung).
+ * Fix: Uses a "Sync Anchor" (lastScreenshotId) to prevent deleted
+ * screenshots from reappearing. Uses the actual MediaStore timestamp
+ * instead of the current system time for correct ordering.
  */
 class ScreenshotObserverService(
     private val context: Context,
@@ -30,10 +31,7 @@ class ScreenshotObserverService(
     private var contentObserver: ContentObserver? = null
     private val scope = CoroutineScope(Dispatchers.IO)
     private val mutex = Mutex()
-
-    /** Track the last saved image ID to prevent duplicates */
-    private var lastSavedImageId: Long = -1
-    private var lastSavedTime: Long = 0
+    private val prefs = AppPreferences(context)
 
     companion object {
         private val SCREENSHOT_PATTERNS = listOf(
@@ -43,7 +41,6 @@ class ScreenshotObserverService(
             "screencap",
             "screen shot"
         )
-        // No time-based debounce needed anymore; we rely on DB checks and image ID
     }
 
     fun startObserving() {
@@ -83,14 +80,16 @@ class ScreenshotObserverService(
 
     /**
      * Checks the most recently added images in MediaStore.
-     * Looks at the last 5 images to handle bursts or background missed screenshots.
+     * Only processes images with an ID greater than the last synced ID.
      */
     private fun syncScreenshots() {
         scope.launch {
-            // Only one coroutine processes at a time to prevent race conditions with DB
+            // Only one coroutine processes at a time
             if (!mutex.tryLock()) return@launch
 
             try {
+                val lastId = prefs.lastScreenshotId.first()
+                
                 val cursor = context.contentResolver.query(
                     MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
                     arrayOf(
@@ -98,48 +97,56 @@ class ScreenshotObserverService(
                         MediaStore.Images.Media.DISPLAY_NAME,
                         MediaStore.Images.Media.DATE_ADDED
                     ),
-                    null, null,
-                    "${MediaStore.Images.Media.DATE_ADDED} DESC"
+                    "${MediaStore.Images.Media._ID} > ?",
+                    arrayOf(lastId.toString()),
+                    "${MediaStore.Images.Media._ID} ASC"
                 )
 
                 cursor?.use {
-                    var count = 0
-                    // Check up to the 5 most recent images
-                    while (it.moveToNext() && count < 5) {
-                        count++
+                    var newLastId = lastId
+                    val idIndex = it.getColumnIndex(MediaStore.Images.Media._ID)
+                    val nameIndex = it.getColumnIndex(MediaStore.Images.Media.DISPLAY_NAME)
+                    val dateIndex = it.getColumnIndex(MediaStore.Images.Media.DATE_ADDED)
+
+                    while (it.moveToNext()) {
+                        if (idIndex < 0 || nameIndex < 0 || dateIndex < 0) continue
                         
-                        val idIndex = it.getColumnIndex(MediaStore.Images.Media._ID)
-                        val nameIndex = it.getColumnIndex(MediaStore.Images.Media.DISPLAY_NAME)
-                        
-                        if (idIndex >= 0 && nameIndex >= 0) {
-                            val imageId = it.getLong(idIndex)
-                            val fileName = it.getString(nameIndex)?.lowercase() ?: continue
+                        val imageId = it.getLong(idIndex)
+                        val fileName = it.getString(nameIndex)?.lowercase() ?: continue
+                        val dateAddedSec = it.getLong(dateIndex)
+                        val timestamp = dateAddedSec * 1000 // Convert to millis
 
-                            // Check if it matches screenshot naming patterns
-                            if (SCREENSHOT_PATTERNS.any { pattern -> fileName.contains(pattern) }) {
-                                val contentUri = Uri.withAppendedPath(
-                                    MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
-                                    imageId.toString()
-                                ).toString()
+                        newLastId = maxOf(newLastId, imageId)
 
-                                // Check if this URI already exists in the database
-                                val db = MemolyDatabase.getDatabase(context)
-                                val existing = db.memoryItemDao().getItemByImagePath(contentUri)
-                                if (existing != null) continue // Already saved
+                        // Check if it matches screenshot naming patterns
+                        if (SCREENSHOT_PATTERNS.any { pattern -> fileName.contains(pattern) }) {
+                            val contentUri = Uri.withAppendedPath(
+                                MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                                imageId.toString()
+                            ).toString()
 
-                                // Save to database
-                                db.memoryItemDao().insert(
-                                    MemoryItem(
-                                        content = "Screenshot captured",
-                                        contentType = ContentType.SCREENSHOT,
-                                        imagePath = contentUri,
-                                        sourceApp = "System Screenshot"
-                                    )
+                            // Double check if this URI already exists in the database just in case
+                            val db = MemolyDatabase.getDatabase(context)
+                            val existing = db.memoryItemDao().getItemByImagePath(contentUri)
+                            if (existing != null) continue 
+
+                            // Save to database with the CORRECT media timestamp
+                            db.memoryItemDao().insert(
+                                MemoryItem(
+                                    content = "Screenshot captured",
+                                    contentType = ContentType.SCREENSHOT,
+                                    imagePath = contentUri,
+                                    sourceApp = "System Screenshot",
+                                    timestamp = timestamp
                                 )
+                            )
 
-                                onScreenshotDetected?.invoke(contentUri)
-                            }
+                            onScreenshotDetected?.invoke(contentUri)
                         }
+                    }
+                    
+                    if (newLastId > lastId) {
+                        prefs.setLastScreenshotId(newLastId)
                     }
                 }
             } catch (e: Exception) {

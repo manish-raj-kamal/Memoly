@@ -29,6 +29,9 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
     private val _content = MutableStateFlow("")
     val content: StateFlow<String> = _content.asStateFlow()
 
+    private val _title = MutableStateFlow("")
+    val title: StateFlow<String> = _title.asStateFlow()
+
     private val _tags = MutableStateFlow("")
     val tags: StateFlow<String> = _tags.asStateFlow()
 
@@ -65,6 +68,10 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
+    fun updateTitle(text: String) {
+        _title.value = text
+    }
+
     fun updateTags(text: String) {
         _tags.value = text
     }
@@ -96,6 +103,7 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
             if (item != null) {
                 _editingItemId.value = item.id
                 _content.value = item.content
+                _title.value = item.title ?: ""
                 _tags.value = item.tags ?: ""
                 _isPinned.value = item.isPinned
                 _contentType.value = item.contentType
@@ -137,10 +145,12 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
                         repository.update(
                             existing.copy(
                                 content = finalContent,
+                                title = _title.value.takeIf { it.isNotBlank() },
                                 contentType = contentType,
                                 tags = _tags.value.takeIf { it.isNotBlank() },
                                 isPinned = _isPinned.value,
                                 reminderTime = reminderTime ?: existing.reminderTime,
+                                isReminderDone = if (reminderTime != null) false else existing.isReminderDone,
                                 imagePath = _attachedImageUri.value ?: existing.imagePath
                             )
                         )
@@ -160,6 +170,7 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
                     val newId = repository.insert(
                         MemoryItem(
                             content = finalContent,
+                            title = _title.value.takeIf { it.isNotBlank() },
                             contentType = contentType,
                             tags = _tags.value.takeIf { it.isNotBlank() },
                             isPinned = _isPinned.value,

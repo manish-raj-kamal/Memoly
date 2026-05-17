@@ -229,25 +229,56 @@ fun EditorScreen(
                     .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
                     .padding(16.dp)
             ) {
-                if (content.isEmpty()) {
-                    Text(
-                        text = "What do you want to remember?\n\nTip: Use command chips below or type \"?rem 7pm\"",
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+                Column(modifier = Modifier.fillMaxSize()) {
+                    val title by viewModel.title.collectAsStateWithLifecycle()
+                    
+                    BasicTextField(
+                        value = title,
+                        onValueChange = viewModel::updateTitle,
+                        modifier = Modifier.fillMaxWidth(),
+                        textStyle = MaterialTheme.typography.titleLarge.copy(
+                            color = MaterialTheme.colorScheme.onSurface,
+                            fontWeight = FontWeight.Bold
+                        ),
+                        cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                        decorationBox = { innerTextField ->
+                            if (title.isEmpty()) {
+                                Text(
+                                    "Title (Optional)",
+                                    style = MaterialTheme.typography.titleLarge.copy(
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                )
+                            }
+                            innerTextField()
+                        }
                     )
+                    
+                    Spacer(modifier = Modifier.height(8.dp))
+                    
+                    Box(modifier = Modifier.weight(1f)) {
+                        if (content.isEmpty()) {
+                            Text(
+                                text = "What do you want to remember?\n\nTip: Use command chips below or type \"?rem 7pm\"",
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+                            )
+                        }
+                        BasicTextField(
+                            value = content,
+                            onValueChange = viewModel::updateContent,
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .focusRequester(focusRequester)
+                                .onFocusChanged { isTextFieldFocused = it.isFocused },
+                            textStyle = MaterialTheme.typography.bodyLarge.copy(
+                                color = MaterialTheme.colorScheme.onSurface
+                            ),
+                            cursorBrush = SolidColor(MaterialTheme.colorScheme.primary)
+                        )
+                    }
                 }
-                BasicTextField(
-                    value = content,
-                    onValueChange = viewModel::updateContent,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .focusRequester(focusRequester)
-                        .onFocusChanged { isTextFieldFocused = it.isFocused },
-                    textStyle = MaterialTheme.typography.bodyLarge.copy(
-                        color = MaterialTheme.colorScheme.onSurface
-                    ),
-                    cursorBrush = SolidColor(MaterialTheme.colorScheme.primary)
-                )
             }
 
             Spacer(modifier = Modifier.height(8.dp))

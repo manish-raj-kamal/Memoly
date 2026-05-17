@@ -15,8 +15,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.foundation.text.InlineTextContent
-import androidx.compose.foundation.text.appendInlineContent
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -43,6 +41,7 @@ import androidx.compose.ui.text.input.TransformedText
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.unit.TextUnit
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
@@ -51,6 +50,59 @@ import com.memoly.dock.ui.components.*
 import com.memoly.dock.ui.theme.MemolyTertiary
 import com.memoly.dock.ui.theme.MemolySecondary
 import java.util.regex.Pattern
+
+/**
+ * Custom OffsetMapping to handle media markers replacement with a single character placeholder.
+ */
+class MediaOffsetMapping(private val originalText: String, private val transformedText: AnnotatedString) : OffsetMapping {
+    
+    override fun originalToTransformed(offset: Int): Int {
+        var currentTransformed = 0
+        var currentOriginal = 0
+        
+        val lines = originalText.split("\n")
+        for (line in lines) {
+            val lineLength = line.length
+            val isMedia = line.startsWith("[img:") || line.startsWith("[file:")
+            
+            if (offset <= currentOriginal + lineLength) {
+                if (isMedia) {
+                    return currentTransformed
+                } else {
+                    return currentTransformed + (offset - currentOriginal)
+                }
+            }
+            
+            currentTransformed += if (isMedia) 1 else lineLength
+            currentTransformed += 1 // \n
+            currentOriginal += lineLength + 1
+        }
+        return transformedText.length
+    }
+
+    override fun transformedToOriginal(offset: Int): Int {
+        var currentTransformed = 0
+        var currentOriginal = 0
+        
+        val lines = originalText.split("\n")
+        for (line in lines) {
+            val isMedia = line.startsWith("[img:") || line.startsWith("[file:")
+            val transformedLineLen = if (isMedia) 1 else line.length
+            
+            if (offset <= currentTransformed + transformedLineLen) {
+                if (isMedia) {
+                    return currentOriginal + line.length
+                } else {
+                    return currentOriginal + (offset - currentTransformed)
+                }
+            }
+            
+            currentTransformed += transformedLineLen + 1
+            currentOriginal += line.length + 1
+        }
+        return originalText.length
+    }
+}
 
 /**
  * Redesigned note editor screen with inline media, interactive checklists, and compact toolbar.
@@ -108,23 +160,23 @@ fun EditorScreen(
         focusRequester.requestFocus()
     }
 
-    // --- Annotated String with Strikethrough and Inline Media ---
+    // --- Annotated String for Rendering ---
     val annotatedString = buildAnnotatedString {
         val lines = contentValue.text.split("\n")
         lines.forEachIndexed { index, line ->
             if (line.startsWith("[img:") && line.endsWith("]")) {
-                val uri = line.substring(5, line.length - 1)
-                appendInlineContent("img_$uri", "[Image]")
+                append("\uFFFC") 
             } else if (line.startsWith("[file:") && line.endsWith("]")) {
-                val parts = line.substring(6, line.length - 1).split("|")
-                val uri = parts.getOrNull(0) ?: ""
-                val name = parts.getOrNull(1) ?: "File"
-                appendInlineContent("file_$uri", name)
+                append("\uFFFD")
             } else {
                 val isChecked = line.trim().startsWith("☑")
                 if (isChecked) {
+                    // Checkbox character itself in yellow, text in gray with strikethrough
+                    withStyle(style = SpanStyle(color = Color(0xFFFFC107))) {
+                        append("☑")
+                    }
                     withStyle(style = SpanStyle(textDecoration = TextDecoration.LineThrough, color = Color.Gray)) {
-                        append(line)
+                        append(line.replaceFirst("☑", ""))
                     }
                 } else {
                     append(line)
@@ -132,51 +184,6 @@ fun EditorScreen(
             }
             if (index < lines.size - 1) append("\n")
         }
-    }
-
-    // --- Inline Content Map ---
-    val screenHeight = LocalConfiguration.current.screenHeightDp.dp
-    val inlineContent = remember(contentValue.text) {
-        val map = mutableMapOf<String, InlineTextContent>()
-        
-        val imgMatcher = Pattern.compile("""\[img:(.+?)]""").matcher(contentValue.text)
-        while (imgMatcher.find()) {
-            val uri = imgMatcher.group(1) ?: ""
-            map["img_$uri"] = InlineTextContent(
-                Placeholder(width = 300.sp, height = 200.sp, placeholderVerticalAlign = PlaceholderVerticalAlign.Center)
-            ) {
-                Box(
-                    modifier = Modifier.fillMaxWidth().heightIn(max = screenHeight * 0.7f).clip(RoundedCornerShape(16.dp)).background(Color.LightGray.copy(alpha = 0.2f))
-                ) {
-                    AsyncImage(model = uri, contentDescription = "Inline Image", modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
-                }
-            }
-        }
-
-        val fileMatcher = Pattern.compile("""\[file:(.+?)\|(.+?)]""").matcher(contentValue.text)
-        while (fileMatcher.find()) {
-            val uri = fileMatcher.group(1) ?: ""
-            val name = fileMatcher.group(2) ?: "File"
-            map["file_$uri"] = InlineTextContent(
-                Placeholder(width = 300.sp, height = 60.sp, placeholderVerticalAlign = PlaceholderVerticalAlign.Center)
-            ) {
-                Card(
-                    modifier = Modifier.fillMaxWidth().height(56.dp),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-                ) {
-                    Row(modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Outlined.InsertDriveFile, contentDescription = null, tint = MemolySecondary)
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Column {
-                            Text(name, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, maxLines = 1)
-                            Text("Document", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
-                        }
-                    }
-                }
-            }
-        }
-        map
     }
 
     if (showTagDialog) {
@@ -279,20 +286,22 @@ fun EditorScreen(
                         }
                     )
                     Spacer(modifier = Modifier.height(8.dp))
-                    Box(modifier = Modifier.weight(1f)) {
+                    
+                    val scrollState = rememberScrollState()
+                    Box(modifier = Modifier.weight(1f).verticalScroll(scrollState)) {
                         if (contentValue.text.isEmpty()) {
                             Text("Start writing...", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f))
                         }
 
                         var textLayoutResult by remember { mutableStateOf<TextLayoutResult?>(null) }
+                        val screenHeight = LocalConfiguration.current.screenHeightDp.dp
 
-                        // Using a higher-level Text implementation that supports inlineContent
-                        // and visualTransformation for the rich editing experience.
                         BasicTextField(
                             value = contentValue,
                             onValueChange = viewModel::updateContentValue,
                             modifier = Modifier
-                                .fillMaxSize()
+                                .fillMaxWidth()
+                                .heightIn(min = 200.dp)
                                 .focusRequester(focusRequester)
                                 .onFocusChanged { isTextFieldFocused = it.isFocused }
                                 .pointerInput(Unit) {
@@ -303,16 +312,47 @@ fun EditorScreen(
                                         }
                                     }
                                 },
-                            textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface, lineHeight = 24.sp),
+                            textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface, lineHeight = 32.sp),
                             cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
                             onTextLayout = { textLayoutResult = it },
                             visualTransformation = { text ->
-                                TransformedText(annotatedString, OffsetMapping.Identity)
+                                TransformedText(annotatedString, MediaOffsetMapping(contentValue.text, annotatedString))
                             }
                         )
                         
-                        // Overlay to render inline content manually if BasicTextField doesn't support it directly
-                        // (Note: Material3 BasicTextField has limitations with inlineContent vs foundation version)
+                        // Media Overlay
+                        val lines = contentValue.text.split("\n")
+                        Column {
+                            lines.forEach { line ->
+                                if (line.startsWith("[img:")) {
+                                    val uri = line.substring(5, line.length - 1)
+                                    Box(
+                                        modifier = Modifier.fillMaxWidth().heightIn(max = screenHeight * 0.7f).padding(vertical = 8.dp).clip(RoundedCornerShape(16.dp)).background(Color.Black.copy(alpha = 0.05f))
+                                    ) {
+                                        AsyncImage(model = uri, contentDescription = null, modifier = Modifier.fillMaxWidth(), contentScale = ContentScale.FillWidth)
+                                    }
+                                } else if (line.startsWith("[file:")) {
+                                    val parts = line.substring(6, line.length - 1).split("|")
+                                    val name = parts.getOrNull(1) ?: "File"
+                                    Card(
+                                        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                                        shape = RoundedCornerShape(12.dp),
+                                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.8f))
+                                    ) {
+                                        Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                                            Icon(Icons.Outlined.InsertDriveFile, contentDescription = null, tint = MemolySecondary)
+                                            Spacer(modifier = Modifier.width(12.dp))
+                                            Column {
+                                                Text(name, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                                                Text("Document", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    Spacer(modifier = Modifier.height(32.sp.toDp()))
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -350,4 +390,10 @@ private fun getFileName(context: android.content.Context, uri: Uri): String? {
         }
     }
     return result
+}
+
+@Composable
+fun TextUnit.toDp(): androidx.compose.ui.unit.Dp {
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    return with(density) { this@toDp.toDp() }
 }

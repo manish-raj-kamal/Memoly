@@ -19,6 +19,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
@@ -57,7 +59,15 @@ fun TimelineScreen(
     val remindersFilter by viewModel.remindersFilter.collectAsStateWithLifecycle()
     val sortOrder by viewModel.sortOrder.collectAsStateWithLifecycle()
 
+    val searchFocusRequester = remember { FocusRequester() }
     var showSortMenu by remember { mutableStateOf(false) }
+
+    // Auto-focus search field when it becomes active
+    LaunchedEffect(isSearchActive) {
+        if (isSearchActive) {
+            searchFocusRequester.requestFocus()
+        }
+    }
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -69,7 +79,8 @@ fun TimelineScreen(
                 onSearchToggle = { viewModel.setSearchActive(!isSearchActive) },
                 onSettingsClick = onSettingsClick,
                 sortOrder = sortOrder,
-                onSortClick = { showSortMenu = true }
+                onSortClick = { showSortMenu = true },
+                searchFocusRequester = searchFocusRequester
             )
         },
         floatingActionButton = {
@@ -319,7 +330,8 @@ private fun TimelineTopBar(
     onSearchToggle: () -> Unit,
     onSettingsClick: () -> Unit,
     sortOrder: SortOrder,
-    onSortClick: () -> Unit
+    onSortClick: () -> Unit,
+    searchFocusRequester: FocusRequester
 ) {
     TopAppBar(
         title = {
@@ -335,7 +347,9 @@ private fun TimelineTopBar(
                         )
                     },
                     singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .focusRequester(searchFocusRequester),
                     textStyle = MaterialTheme.typography.bodyMedium,
                     shape = RoundedCornerShape(12.dp),
                     colors = OutlinedTextFieldDefaults.colors(

@@ -40,6 +40,9 @@ data class MemoryItem(
     /** File path for images/screenshots stored locally */
     val imagePath: String? = null,
 
+    /** Extracted text from images (OCR) */
+    val extractedText: String? = null,
+
     /** Whether this item is pinned to the top */
     val isPinned: Boolean = false,
 

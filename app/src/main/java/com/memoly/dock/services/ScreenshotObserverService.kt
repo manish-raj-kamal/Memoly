@@ -19,9 +19,9 @@ import kotlinx.coroutines.sync.Mutex
 /**
  * Efficient screenshot observer using MediaStore ContentObserver.
  *
- * Fix: Uses a "Sync Anchor" (lastScreenshotId) to prevent deleted
- * screenshots from reappearing. Uses the actual MediaStore timestamp
- * instead of the current system time for correct ordering.
+ * Fix: Uses a "Baseline Timestamp" to ensure only screenshots taken AFTER
+ * the app was installed/reset are synced. This prevents old gallery photos
+ * from appearing. Also triggers OCR for searchable images.
  */
 class ScreenshotObserverService(
     private val context: Context,
@@ -80,7 +80,8 @@ class ScreenshotObserverService(
 
     /**
      * Checks the most recently added images in MediaStore.
-     * Only processes images with an ID greater than the last synced ID.
+     * Only processes images with an ID greater than the last synced ID
+     * AND a date greater than the installation baseline.
      */
     private fun syncScreenshots() {
         scope.launch {
@@ -88,6 +89,13 @@ class ScreenshotObserverService(
             if (!mutex.tryLock()) return@launch
 
             try {
+                // Initialize baseline if not set (first run)
+                var baseline = prefs.baselineTimestamp.first()
+                if (baseline == -1L) {
+                    baseline = System.currentTimeMillis()
+                    prefs.setBaselineTimestamp(baseline)
+                }
+
                 val lastId = prefs.lastScreenshotId.first()
                 
                 val cursor = context.contentResolver.query(
@@ -97,8 +105,8 @@ class ScreenshotObserverService(
                         MediaStore.Images.Media.DISPLAY_NAME,
                         MediaStore.Images.Media.DATE_ADDED
                     ),
-                    "${MediaStore.Images.Media._ID} > ?",
-                    arrayOf(lastId.toString()),
+                    "${MediaStore.Images.Media._ID} > ? AND ${MediaStore.Images.Media.DATE_ADDED} > ?",
+                    arrayOf(lastId.toString(), (baseline / 1000).toString()),
                     "${MediaStore.Images.Media._ID} ASC"
                 )
 
@@ -125,19 +133,24 @@ class ScreenshotObserverService(
                                 imageId.toString()
                             ).toString()
 
-                            // Double check if this URI already exists in the database just in case
                             val db = MemolyDatabase.getDatabase(context)
+                            
+                            // Check if this URI already exists in the database
                             val existing = db.memoryItemDao().getItemByImagePath(contentUri)
                             if (existing != null) continue 
 
-                            // Save to database with the CORRECT media timestamp
+                            // Extract text using OCR before saving
+                            val extractedText = OCRManager.extractText(context, contentUri)
+
+                            // Save to database
                             db.memoryItemDao().insert(
                                 MemoryItem(
                                     content = "Screenshot captured",
                                     contentType = ContentType.SCREENSHOT,
                                     imagePath = contentUri,
                                     sourceApp = "System Screenshot",
-                                    timestamp = timestamp
+                                    timestamp = timestamp,
+                                    extractedText = extractedText
                                 )
                             )
 

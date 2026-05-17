@@ -32,6 +32,7 @@ class AppPreferences(private val context: Context) {
 
         // Sync state
         val KEY_LAST_SCREENSHOT_ID = longPreferencesKey("last_screenshot_id")
+        val KEY_BASELINE_TIMESTAMP = longPreferencesKey("baseline_timestamp")
 
         // Quick Capture toggles
         val KEY_QUICK_TILE_ENABLED = booleanPreferencesKey("quick_tile_enabled")
@@ -71,6 +72,9 @@ class AppPreferences(private val context: Context) {
 
     val lastScreenshotId: Flow<Long> = context.dataStore.data
         .map { it[KEY_LAST_SCREENSHOT_ID] ?: -1L }
+
+    val baselineTimestamp: Flow<Long> = context.dataStore.data
+        .map { it[KEY_BASELINE_TIMESTAMP] ?: -1L }
 
     // Quick Capture getters
     val quickTileEnabled: Flow<Boolean> = context.dataStore.data
@@ -124,6 +128,10 @@ class AppPreferences(private val context: Context) {
 
     suspend fun setLastScreenshotId(id: Long) {
         context.dataStore.edit { it[KEY_LAST_SCREENSHOT_ID] = id }
+    }
+
+    suspend fun setBaselineTimestamp(timestamp: Long) {
+        context.dataStore.edit { it[KEY_BASELINE_TIMESTAMP] = timestamp }
     }
 
     suspend fun setQuickTileEnabled(enabled: Boolean) {

@@ -81,6 +81,10 @@ dependencies {
     // Image Loading
     implementation(libs.coil.compose)
 
+    // OCR
+    implementation(libs.mlkit.text.recognition)
+    implementation(libs.kotlinx.coroutines.play.services)
+
     // Testing
     testImplementation(libs.junit)
     androidTestImplementation(platform(libs.androidx.compose.bom))

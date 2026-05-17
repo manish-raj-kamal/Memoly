@@ -13,7 +13,7 @@ import com.memoly.dock.data.model.MemoryItem
  */
 @Database(
     entities = [MemoryItem::class],
-    version = 4,
+    version = 5,
     exportSchema = true
 )
 @TypeConverters(Converters::class)

@@ -29,6 +29,7 @@ interface MemoryItemDao {
         SELECT * FROM memory_items 
         WHERE content LIKE '%' || :query || '%' 
         OR tags LIKE '%' || :query || '%'
+        OR extractedText LIKE '%' || :query || '%'
         ORDER BY isPinned DESC, timestamp DESC
     """)
     fun searchItems(query: String): Flow<List<MemoryItem>>

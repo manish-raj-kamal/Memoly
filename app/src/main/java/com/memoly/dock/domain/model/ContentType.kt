@@ -9,7 +9,8 @@ enum class ContentType {
     LINK,
     SCREENSHOT,
     IMAGE,
-    NOTE;
+    NOTE,
+    FILE;
 
     companion object {
         fun fromString(value: String): ContentType {

@@ -48,9 +48,18 @@ class MemoryRepository(private val dao: MemoryItemDao) {
     /** Toggle pin status for an item */
     suspend fun togglePin(id: Long) = dao.togglePin(id)
 
+    /** Toggle favorite status for an item */
+    suspend fun toggleFavorite(id: Long) = dao.toggleFavorite(id)
+
+    /** Get favorite items */
+    fun getFavorites(): Flow<List<MemoryItem>> = dao.getFavorites()
+
     /** Update reminder time for an item */
     suspend fun updateReminderTime(id: Long, reminderTime: Long?) =
         dao.updateReminderTime(id, reminderTime)
+
+    /** Mark reminder as done */
+    suspend fun markReminderDone(id: Long) = dao.markReminderDone(id)
 
     /** Get total item count */
     fun getItemCount(): Flow<Int> = dao.getItemCount()

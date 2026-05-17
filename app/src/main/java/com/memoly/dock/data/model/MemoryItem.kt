@@ -28,14 +28,23 @@ data class MemoryItem(
     /** Comma-separated tags for search and organization */
     val tags: String? = null,
 
+    /** The title of the memory */
+    val title: String? = null,
+
     /** Scheduled reminder time (epoch millis), null if no reminder */
     val reminderTime: Long? = null,
+
+    /** Whether the reminder has been marked as done */
+    val isReminderDone: Boolean = false,
 
     /** File path for images/screenshots stored locally */
     val imagePath: String? = null,
 
     /** Whether this item is pinned to the top */
     val isPinned: Boolean = false,
+
+    /** Whether this item is starred/favorited */
+    val isFavorite: Boolean = false,
 
     /** When this entity was created in the database */
     val createdAt: Long = System.currentTimeMillis()

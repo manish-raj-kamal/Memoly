@@ -65,9 +65,21 @@ interface MemoryItemDao {
     @Query("UPDATE memory_items SET isPinned = NOT isPinned WHERE id = :id")
     suspend fun togglePin(id: Long)
 
+    /** Toggle favorite status */
+    @Query("UPDATE memory_items SET isFavorite = NOT isFavorite WHERE id = :id")
+    suspend fun toggleFavorite(id: Long)
+
+    /** Get favorite items */
+    @Query("SELECT * FROM memory_items WHERE isFavorite = 1 ORDER BY isPinned DESC, timestamp DESC")
+    fun getFavorites(): Flow<List<MemoryItem>>
+
     /** Update reminder time for an item */
     @Query("UPDATE memory_items SET reminderTime = :reminderTime WHERE id = :id")
     suspend fun updateReminderTime(id: Long, reminderTime: Long?)
+
+    /** Mark reminder as done */
+    @Query("UPDATE memory_items SET isReminderDone = 1 WHERE id = :id")
+    suspend fun markReminderDone(id: Long)
 
     /** Find item by image path (for duplicate detection) */
     @Query("SELECT * FROM memory_items WHERE imagePath = :imagePath LIMIT 1")

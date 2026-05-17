@@ -29,7 +29,7 @@ import com.memoly.dock.data.local.MemolyDatabase
 import com.memoly.dock.data.model.MemoryItem
 import com.memoly.dock.domain.model.ContentType
 import com.memoly.dock.domain.usecase.ReminderParser
-import com.memoly.dock.ui.components.CommandBar
+import com.memoly.dock.ui.components.QuickCommandBar
 import com.memoly.dock.ui.theme.*
 import com.memoly.dock.utils.containsUrl
 import com.memoly.dock.utils.isUrl
@@ -160,7 +160,7 @@ fun QuickCaptureScreen(
                 Spacer(modifier = Modifier.height(8.dp))
 
                 // Command bar chips — always visible above save button
-                CommandBar(
+                QuickCommandBar(
                     onCommandInsert = { command ->
                         text = if (text.isBlank()) command else "$text $command"
                     }

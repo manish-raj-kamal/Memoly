@@ -14,12 +14,75 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.memoly.dock.ui.theme.*
 import java.text.SimpleDateFormat
 import java.util.*
+
+/**
+ * Lightweight command bar for Quick Capture.
+ */
+@Composable
+fun QuickCommandBar(
+    onCommandInsert: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var showReminderPicker by remember { mutableStateOf(false) }
+
+    if (showReminderPicker) {
+        ReminderTimePicker(
+            onTimeSelected = { timeStr ->
+                onCommandInsert("?rem $timeStr")
+                showReminderPicker = false
+            },
+            onDismiss = { showReminderPicker = false }
+        )
+    }
+
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        CommandChip(
+            label = "?rem",
+            icon = Icons.Outlined.NotificationsActive,
+            color = MemolyWarning,
+            onClick = { showReminderPicker = true }
+        )
+        CommandChip(
+            label = "?todo",
+            icon = Icons.Outlined.CheckCircleOutline,
+            color = MemolySecondary,
+            onClick = { onCommandInsert("?todo") }
+        )
+    }
+}
+
+@Composable
+private fun CommandChip(
+    label: String,
+    icon: ImageVector,
+    color: Color,
+    onClick: () -> Unit
+) {
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(8.dp),
+        color = color.copy(alpha = 0.1f)
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            Icon(icon, contentDescription = null, tint = color, modifier = Modifier.size(14.dp))
+            Text(label, style = MaterialTheme.typography.labelSmall, color = color)
+        }
+    }
+}
 
 /**
  * Compact toolbar for the editor, matching the user's reference image.

@@ -2,4 +2,10 @@
     <string name="app_name">Memoly</string>
     <string name="accessibility_service_description">Memoly Quick Capture allows you to instantly save a memory from anywhere using an accessibility shortcut. This service does NOT read your screen content or monitor any app activity. It only detects the accessibility button/shortcut gesture to open the quick capture overlay.</string>
     <string name="qs_tile_label">New Memory</string>
+    <string name="shortcut_new_memory_short">New Memory</string>
+    <string name="shortcut_new_memory_long">Create New Memory</string>
+    <string name="shortcut_reminder_short">Quick Reminder</string>
+    <string name="shortcut_reminder_long">Add Quick Reminder</string>
+    <string name="shortcut_screenshot_short">Save Screenshot</string>
+    <string name="shortcut_screenshot_long">Save Latest Screenshot</string>
 </resources>

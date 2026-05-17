@@ -20,6 +20,11 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.withStyle
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
@@ -86,6 +91,13 @@ fun DetailScreen(
                 },
                 actions = {
                     item?.let { memory ->
+                        IconButton(onClick = { viewModel.toggleFavorite() }) {
+                            Icon(
+                                imageVector = if (memory.isFavorite) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
+                                contentDescription = "Favorite",
+                                tint = if (memory.isFavorite) androidx.compose.ui.graphics.Color.Red else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                         IconButton(onClick = { viewModel.togglePin() }) {
                             Icon(
                                 imageVector = if (memory.isPinned) Icons.Filled.PushPin else Icons.Outlined.PushPin,
@@ -200,12 +212,72 @@ fun DetailScreen(
                         // Reminder info
                         memory.reminderTime?.let { reminderTime ->
                             Spacer(modifier = Modifier.height(12.dp))
-                            ReminderBadge(reminderTime = reminderTime.toDateTimeString())
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        imageVector = if (memory.isReminderDone) Icons.Outlined.CheckCircle else Icons.Outlined.Notifications,
+                                        contentDescription = null,
+                                        tint = if (memory.isReminderDone) MaterialTheme.colorScheme.onSurfaceVariant else MemolySecondary,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = reminderTime.toDateTimeString(),
+                                        style = MaterialTheme.typography.bodySmall.copy(
+                                            textDecoration = if (memory.isReminderDone) androidx.compose.ui.text.style.TextDecoration.LineThrough else null
+                                        ),
+                                        color = if (memory.isReminderDone) MaterialTheme.colorScheme.onSurfaceVariant else MemolySecondary
+                                    )
+                                }
+                            }
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                if (!memory.isReminderDone) {
+                                    OutlinedButton(
+                                        onClick = { viewModel.markReminderDone() },
+                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                                        modifier = Modifier.height(32.dp)
+                                    ) {
+                                        Text("Mark Done", fontSize = 12.sp)
+                                    }
+                                }
+                                OutlinedButton(
+                                    onClick = { onEditClick(memory.id) },
+                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                                    modifier = Modifier.height(32.dp)
+                                ) {
+                                    Text("Reschedule", fontSize = 12.sp)
+                                }
+                                OutlinedButton(
+                                    onClick = { viewModel.cancelReminder() },
+                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                                    modifier = Modifier.height(32.dp)
+                                ) {
+                                    Text("Cancel", fontSize = 12.sp, color = MemolyError)
+                                }
+                            }
                         }
                     }
                 }
 
                 Spacer(modifier = Modifier.height(20.dp))
+
+                // Title
+                if (!memory.title.isNullOrBlank()) {
+                    Text(
+                        text = memory.title,
+                        style = MaterialTheme.typography.headlineMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                    Spacer(modifier = Modifier.height(12.dp))
+                }
 
                 // Image preview
                 if (memory.contentType == ContentType.SCREENSHOT || memory.contentType == ContentType.IMAGE) {
@@ -223,37 +295,65 @@ fun DetailScreen(
                 }
 
                 // Content
+                val urls = memory.content.extractUrls()
+                val annotatedContent = buildAnnotatedString {
+                    var lastIndex = 0
+                    for (url in urls) {
+                        val startIndex = memory.content.indexOf(url, lastIndex)
+                        if (startIndex != -1) {
+                            append(memory.content.substring(lastIndex, startIndex))
+                            withStyle(
+                                style = SpanStyle(
+                                    color = MaterialTheme.colorScheme.primary,
+                                    textDecoration = TextDecoration.Underline
+                                )
+                            ) {
+                                append(url)
+                            }
+                            lastIndex = startIndex + url.length
+                        }
+                    }
+                    if (lastIndex < memory.content.length) {
+                        append(memory.content.substring(lastIndex))
+                    }
+                }
+
                 Text(
-                    text = memory.content,
+                    text = annotatedContent,
                     style = MaterialTheme.typography.bodyLarge,
                     color = MaterialTheme.colorScheme.onSurface
                 )
 
-                // Link action
-                if (memory.contentType == ContentType.LINK) {
+                // Link actions
+                if (urls.isNotEmpty()) {
                     Spacer(modifier = Modifier.height(16.dp))
-                    OutlinedButton(
-                        onClick = {
-                            try {
-                                val uri = if (memory.content.startsWith("http")) {
-                                    Uri.parse(memory.content)
-                                } else {
-                                    Uri.parse("https://${memory.content}")
-                                }
-                                context.startActivity(Intent(Intent.ACTION_VIEW, uri))
-                            } catch (e: Exception) {
-                                // Invalid URL
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        urls.forEach { url ->
+                            OutlinedButton(
+                                onClick = {
+                                    try {
+                                        val parsedUri = if (url.startsWith("http")) {
+                                            Uri.parse(url)
+                                        } else {
+                                            Uri.parse("https://$url")
+                                        }
+                                        context.startActivity(Intent(Intent.ACTION_VIEW, parsedUri))
+                                    } catch (e: Exception) {
+                                        // Invalid URL
+                                    }
+                                },
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Icon(
+                                    Icons.Outlined.OpenInNew,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Open $url", maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
                             }
-                        },
-                        shape = RoundedCornerShape(12.dp)
-                    ) {
-                        Icon(
-                            Icons.Outlined.OpenInNew,
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("Open Link")
+                        }
                     }
                 }
 

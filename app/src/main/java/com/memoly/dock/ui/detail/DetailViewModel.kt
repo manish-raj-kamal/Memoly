@@ -42,6 +42,27 @@ class DetailViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
+    fun toggleFavorite() {
+        val item = _memoryItem.value ?: return
+        viewModelScope.launch {
+            repository.toggleFavorite(item.id)
+        }
+    }
+
+    fun cancelReminder() {
+        val item = _memoryItem.value ?: return
+        viewModelScope.launch {
+            repository.updateReminderTime(item.id, null)
+        }
+    }
+
+    fun markReminderDone() {
+        val item = _memoryItem.value ?: return
+        viewModelScope.launch {
+            repository.markReminderDone(item.id)
+        }
+    }
+
     fun deleteItem() {
         val item = _memoryItem.value ?: return
         viewModelScope.launch {

@@ -39,6 +39,7 @@ fun contentTypeIcon(type: ContentType): ImageVector {
         ContentType.SCREENSHOT -> Icons.Outlined.Screenshot
         ContentType.IMAGE -> Icons.Outlined.Image
         ContentType.NOTE -> Icons.Outlined.StickyNote2
+        ContentType.FILE -> Icons.Outlined.InsertDriveFile
     }
 }
 
@@ -52,6 +53,7 @@ fun contentTypeColor(type: ContentType): Color {
         ContentType.SCREENSHOT -> TypeScreenshotColor
         ContentType.IMAGE -> TypeImageColor
         ContentType.NOTE -> TypeNoteColor
+        ContentType.FILE -> TypeFileColor
     }
 }
 
@@ -65,6 +67,7 @@ fun contentTypeLabel(type: ContentType): String {
         ContentType.SCREENSHOT -> "Screenshot"
         ContentType.IMAGE -> "Image"
         ContentType.NOTE -> "Note"
+        ContentType.FILE -> "File"
     }
 }
 

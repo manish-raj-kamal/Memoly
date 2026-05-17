@@ -50,6 +50,83 @@ fun DetailScreen(
     val context = LocalContext.current
 
     var showDeleteDialog by remember { mutableStateOf(false) }
+    var showCancelReminderDialog by remember { mutableStateOf(false) }
+
+    // Custom Date/Time Picker State
+    var showDatePicker by remember { mutableStateOf(false) }
+    var showTimePicker by remember { mutableStateOf(false) }
+    var selectedDateMillis by remember { mutableStateOf<Long?>(null) }
+    val datePickerState = rememberDatePickerState()
+    val timePickerState = rememberTimePickerState()
+
+    // Date Picker Dialog
+    if (showDatePicker) {
+        DatePickerDialog(
+            onDismissRequest = { showDatePicker = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    selectedDateMillis = datePickerState.selectedDateMillis
+                    showDatePicker = false
+                    showTimePicker = true
+                }) { Text("Next") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDatePicker = false }) { Text("Cancel") }
+            }
+        ) {
+            DatePicker(state = datePickerState)
+        }
+    }
+
+    // Time Picker Dialog
+    if (showTimePicker) {
+        AlertDialog(
+            onDismissRequest = { showTimePicker = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    val date = selectedDateMillis?.let { java.util.Date(it) } ?: java.util.Date()
+                    val calendar = java.util.Calendar.getInstance().apply {
+                        time = date
+                        set(java.util.Calendar.HOUR_OF_DAY, timePickerState.hour)
+                        set(java.util.Calendar.MINUTE, timePickerState.minute)
+                    }
+                    viewModel.rescheduleReminder(calendar.timeInMillis)
+                    showTimePicker = false
+                }) { Text("Set") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showTimePicker = false }) { Text("Back") }
+            },
+            text = {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    TimePicker(state = timePickerState)
+                }
+            }
+        )
+    }
+
+    if (showCancelReminderDialog) {
+        AlertDialog(
+            onDismissRequest = { showCancelReminderDialog = false },
+            title = { Text("Cancel Reminder") },
+            text = { Text("Do you want to remove the reminder for this note?") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        viewModel.cancelReminder()
+                        showCancelReminderDialog = false
+                    },
+                    colors = ButtonDefaults.textButtonColors(contentColor = MemolyError)
+                ) { Text("Remove Reminder") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showCancelReminderDialog = false }) { Text("Keep it") }
+            }
+        )
+    }
 
     LaunchedEffect(memoryId) {
         viewModel.loadItem(memoryId)
@@ -246,14 +323,14 @@ fun DetailScreen(
                                     }
                                 }
                                 OutlinedButton(
-                                    onClick = { onEditClick(memory.id) },
+                                    onClick = { showDatePicker = true },
                                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
                                     modifier = Modifier.height(32.dp)
                                 ) {
                                     Text("Reschedule", fontSize = 12.sp)
                                 }
                                 OutlinedButton(
-                                    onClick = { viewModel.cancelReminder() },
+                                    onClick = { showCancelReminderDialog = true },
                                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
                                     modifier = Modifier.height(32.dp)
                                 ) {

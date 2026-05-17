@@ -49,11 +49,15 @@ fun TimelineScreen(
     viewModel: TimelineViewModel = viewModel()
 ) {
     val items by viewModel.memoryItems.collectAsStateWithLifecycle()
+    val pinnedItems by viewModel.pinnedItems.collectAsStateWithLifecycle()
     val searchQuery by viewModel.searchQuery.collectAsStateWithLifecycle()
     val isSearchActive by viewModel.isSearchActive.collectAsStateWithLifecycle()
     val selectedFilter by viewModel.selectedFilter.collectAsStateWithLifecycle()
     val selectedTab by viewModel.selectedTab.collectAsStateWithLifecycle()
     val remindersFilter by viewModel.remindersFilter.collectAsStateWithLifecycle()
+    val sortOrder by viewModel.sortOrder.collectAsStateWithLifecycle()
+
+    var showSortMenu by remember { mutableStateOf(false) }
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -63,7 +67,9 @@ fun TimelineScreen(
                 searchQuery = searchQuery,
                 onSearchQueryChange = viewModel::updateSearchQuery,
                 onSearchToggle = { viewModel.setSearchActive(!isSearchActive) },
-                onSettingsClick = onSettingsClick
+                onSettingsClick = onSettingsClick,
+                sortOrder = sortOrder,
+                onSortClick = { showSortMenu = true }
             )
         },
         floatingActionButton = {
@@ -137,6 +143,43 @@ fun TimelineScreen(
             }
         }
     ) { padding ->
+        // Sorting Modal Bottom Sheet or Menu
+        if (showSortMenu) {
+            ModalBottomSheet(
+                onDismissRequest = { showSortMenu = false },
+                sheetState = rememberModalBottomSheetState()
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 32.dp)
+                ) {
+                    Text(
+                        "Sort By",
+                        style = MaterialTheme.typography.titleMedium,
+                        modifier = Modifier.padding(16.dp),
+                        fontWeight = FontWeight.Bold
+                    )
+                    SortOrder.entries.forEach { order ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    viewModel.setSortOrder(order)
+                                    showSortMenu = false
+                                }
+                                .padding(16.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(selected = sortOrder == order, onClick = null)
+                            Spacer(modifier = Modifier.width(16.dp))
+                            Text(order.label)
+                        }
+                    }
+                }
+            }
+        }
+
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -155,25 +198,72 @@ fun TimelineScreen(
                 )
             }
 
-            if (items.isEmpty()) {
+            if (items.isEmpty() && pinnedItems.isEmpty()) {
                 EmptyTimelineState()
             } else {
-                // Group items by date
-                val groupedItems = remember(items) {
-                    items.groupBy { it.timestamp.toGroupDateString() }
-                }
-
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(bottom = 16.dp)
                 ) {
-                    groupedItems.forEach { (date, dateItems) ->
-                        item(key = "header_$date") {
-                            TimelineDateHeader(date = date)
+                    // 1. Pinned Section
+                    if (pinnedItems.isNotEmpty()) {
+                        item {
+                            TimelineSectionHeader(title = "Pinned")
                         }
-
                         items(
-                            items = dateItems,
+                            items = pinnedItems,
+                            key = { "pinned_${it.id}" }
+                        ) { memoryItem ->
+                            TimelineItemRow(
+                                item = memoryItem,
+                                onClick = { onItemClick(memoryItem.id) },
+                                onFavoriteToggle = { viewModel.toggleFavorite(memoryItem.id) },
+                                onPinToggle = { viewModel.togglePin(memoryItem.id) },
+                                onDelete = { viewModel.deleteItem(memoryItem) },
+                                modifier = Modifier.animateItem()
+                            )
+                        }
+                        item {
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Divider(
+                                modifier = Modifier.padding(horizontal = 20.dp),
+                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                            )
+                        }
+                    }
+
+                    // 2. Main Timeline Section
+                    // Group items by date for chronological view (Home/Notes/Favorites)
+                    // For Reminders, we might not want date grouping as they are already sorted by time
+                    val showDateHeaders = selectedTab != TabType.REMINDERS
+                    
+                    if (showDateHeaders) {
+                        val groupedItems = items.groupBy { it.timestamp.toGroupDateString() }
+                        groupedItems.forEach { (date, dateItems) ->
+                            item(key = "header_$date") {
+                                TimelineDateHeader(date = date)
+                            }
+                            items(
+                                items = dateItems,
+                                key = { it.id }
+                            ) { memoryItem ->
+                                TimelineItemRow(
+                                    item = memoryItem,
+                                    onClick = { onItemClick(memoryItem.id) },
+                                    onFavoriteToggle = { viewModel.toggleFavorite(memoryItem.id) },
+                                    onPinToggle = { viewModel.togglePin(memoryItem.id) },
+                                    onDelete = { viewModel.deleteItem(memoryItem) },
+                                    modifier = Modifier.animateItem()
+                                )
+                            }
+                        }
+                    } else {
+                        // For Reminders or non-chronological sorting, just list them
+                        item {
+                            TimelineSectionHeader(title = if (selectedTab == TabType.REMINDERS) "Reminders" else "Memories")
+                        }
+                        items(
+                            items = items,
                             key = { it.id }
                         ) { memoryItem ->
                             TimelineItemRow(
@@ -227,7 +317,9 @@ private fun TimelineTopBar(
     searchQuery: String,
     onSearchQueryChange: (String) -> Unit,
     onSearchToggle: () -> Unit,
-    onSettingsClick: () -> Unit
+    onSettingsClick: () -> Unit,
+    sortOrder: SortOrder,
+    onSortClick: () -> Unit
 ) {
     TopAppBar(
         title = {
@@ -285,6 +377,15 @@ private fun TimelineTopBar(
             }
         },
         actions = {
+            if (!isSearchActive) {
+                IconButton(onClick = onSortClick) {
+                    Icon(
+                        imageVector = Icons.Outlined.Sort,
+                        contentDescription = "Sort",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
             IconButton(onClick = onSearchToggle) {
                 Icon(
                     imageVector = if (isSearchActive) Icons.Filled.Close else Icons.Outlined.Search,
@@ -359,6 +460,31 @@ private fun FilterChipRow(
                 )
             )
         }
+    }
+}
+
+@Composable
+private fun TimelineSectionHeader(
+    title: String,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.primary
+        )
+        Spacer(modifier = Modifier.width(8.dp))
+        HorizontalDivider(
+            modifier = Modifier.weight(1f),
+            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
+        )
     }
 }
 

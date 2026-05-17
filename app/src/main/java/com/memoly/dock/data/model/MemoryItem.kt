@@ -46,6 +46,9 @@ data class MemoryItem(
     /** Whether this item is starred/favorited */
     val isFavorite: Boolean = false,
 
+    /** When this item was last modified */
+    val lastModifiedAt: Long = System.currentTimeMillis(),
+
     /** When this entity was created in the database */
     val createdAt: Long = System.currentTimeMillis()
 )

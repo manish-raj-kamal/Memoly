@@ -40,22 +40,27 @@ class TimelineViewModel(application: Application) : AndroidViewModel(application
     private val _remindersFilter = MutableStateFlow<String>("Upcoming") // "Upcoming" or "Completed"
     val remindersFilter: StateFlow<String> = _remindersFilter.asStateFlow()
 
+    private val _sortOrder = MutableStateFlow(SortOrder.DATE_CREATED_DESC)
+    val sortOrder: StateFlow<SortOrder> = _sortOrder.asStateFlow()
+
     val memoryItems: StateFlow<List<MemoryItem>>
+    val pinnedItems: StateFlow<List<MemoryItem>>
 
     init {
         val db = MemolyDatabase.getDatabase(application)
         repository = MemoryRepository(db.memoryItemDao())
 
-        memoryItems = combine(
+        val allItemsFlow = combine(
             _searchQuery.debounce(300),
             _selectedFilter,
             _selectedTab,
-            _remindersFilter
-        ) { query, filter, tab, remFilter ->
-            data class FilterState(val query: String, val filter: ContentType?, val tab: TabType, val remFilter: String)
-            FilterState(query, filter, tab, remFilter)
+            _remindersFilter,
+            _sortOrder
+        ) { query, filter, tab, remFilter, sort ->
+            data class FilterState(val query: String, val filter: ContentType?, val tab: TabType, val remFilter: String, val sort: SortOrder)
+            FilterState(query, filter, tab, remFilter, sort)
         }.flatMapLatest { state ->
-            when {
+            val baseFlow = when {
                 state.query.isNotBlank() -> repository.searchItems(state.query)
                 state.tab == TabType.FAVORITES -> repository.getFavorites()
                 state.tab == TabType.NOTES -> repository.getItemsByType(ContentType.NOTE)
@@ -70,11 +75,37 @@ class TimelineViewModel(application: Application) : AndroidViewModel(application
                 state.filter != null -> repository.getItemsByType(state.filter)
                 else -> repository.getAllItems()
             }
+            
+            baseFlow.map { items ->
+                when (state.sort) {
+                    SortOrder.DATE_CREATED_DESC -> items.sortedByDescending { it.timestamp }
+                    SortOrder.DATE_CREATED_ASC -> items.sortedBy { it.timestamp }
+                    SortOrder.DATE_MODIFIED -> items.sortedByDescending { it.lastModifiedAt }
+                    SortOrder.TAGS -> items.sortedBy { it.tags ?: "zzz" }
+                    SortOrder.TYPE -> items.sortedBy { it.contentType.name }
+                }
+            }
+        }
+
+        memoryItems = allItemsFlow.map { items ->
+            items.filter { !it.isPinned }
         }.stateIn(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5000),
             initialValue = emptyList()
         )
+
+        pinnedItems = allItemsFlow.map { items ->
+            items.filter { it.isPinned }
+        }.stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = emptyList()
+        )
+    }
+
+    fun setSortOrder(order: SortOrder) {
+        _sortOrder.value = order
     }
 
     fun setTab(tab: TabType) {

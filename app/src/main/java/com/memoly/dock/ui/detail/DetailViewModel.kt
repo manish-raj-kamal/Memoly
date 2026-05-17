@@ -63,6 +63,13 @@ class DetailViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
+    fun rescheduleReminder(timeMillis: Long) {
+        val item = _memoryItem.value ?: return
+        viewModelScope.launch {
+            repository.updateReminderTime(item.id, timeMillis)
+        }
+    }
+
     fun deleteItem() {
         val item = _memoryItem.value ?: return
         viewModelScope.launch {

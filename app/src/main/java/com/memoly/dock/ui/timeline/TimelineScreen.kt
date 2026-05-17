@@ -52,8 +52,8 @@ fun TimelineScreen(
     val searchQuery by viewModel.searchQuery.collectAsStateWithLifecycle()
     val isSearchActive by viewModel.isSearchActive.collectAsStateWithLifecycle()
     val selectedFilter by viewModel.selectedFilter.collectAsStateWithLifecycle()
-
-    var selectedTab by remember { mutableIntStateOf(0) }
+    val selectedTab by viewModel.selectedTab.collectAsStateWithLifecycle()
+    val remindersFilter by viewModel.remindersFilter.collectAsStateWithLifecycle()
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -91,11 +91,8 @@ fun TimelineScreen(
                 modifier = Modifier.shadow(elevation = 8.dp)
             ) {
                 NavigationBarItem(
-                    selected = selectedTab == 0,
-                    onClick = {
-                        selectedTab = 0
-                        viewModel.setFilter(null)
-                    },
+                    selected = selectedTab == TabType.HOME,
+                    onClick = { viewModel.setTab(TabType.HOME) },
                     icon = { Icon(Icons.Outlined.Home, contentDescription = null) },
                     label = { Text("Home", fontSize = 11.sp) },
                     colors = NavigationBarItemDefaults.colors(
@@ -105,13 +102,10 @@ fun TimelineScreen(
                     )
                 )
                 NavigationBarItem(
-                    selected = selectedTab == 1,
-                    onClick = {
-                        selectedTab = 1
-                        viewModel.setFilter(null)
-                    },
-                    icon = { Icon(Icons.Outlined.Tag, contentDescription = null) },
-                    label = { Text("Tags", fontSize = 11.sp) },
+                    selected = selectedTab == TabType.FAVORITES,
+                    onClick = { viewModel.setTab(TabType.FAVORITES) },
+                    icon = { Icon(if (selectedTab == TabType.FAVORITES) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder, contentDescription = null) },
+                    label = { Text("Favourites", fontSize = 11.sp) },
                     colors = NavigationBarItemDefaults.colors(
                         selectedIconColor = MemolyPrimary,
                         selectedTextColor = MemolyPrimary,
@@ -119,11 +113,8 @@ fun TimelineScreen(
                     )
                 )
                 NavigationBarItem(
-                    selected = selectedTab == 2,
-                    onClick = {
-                        selectedTab = 2
-                        viewModel.setFilter(null)
-                    },
+                    selected = selectedTab == TabType.REMINDERS,
+                    onClick = { viewModel.setTab(TabType.REMINDERS) },
                     icon = { Icon(Icons.Outlined.NotificationsActive, contentDescription = null) },
                     label = { Text("Reminders", fontSize = 11.sp) },
                     colors = NavigationBarItemDefaults.colors(
@@ -133,11 +124,8 @@ fun TimelineScreen(
                     )
                 )
                 NavigationBarItem(
-                    selected = selectedTab == 3,
-                    onClick = {
-                        selectedTab = 3
-                        viewModel.setFilter(ContentType.NOTE)
-                    },
+                    selected = selectedTab == TabType.NOTES,
+                    onClick = { viewModel.setTab(TabType.NOTES) },
                     icon = { Icon(Icons.Outlined.StickyNote2, contentDescription = null) },
                     label = { Text("Notes", fontSize = 11.sp) },
                     colors = NavigationBarItemDefaults.colors(
@@ -155,10 +143,17 @@ fun TimelineScreen(
                 .padding(padding)
         ) {
             // Filter chips
-            FilterChipRow(
-                selectedFilter = selectedFilter,
-                onFilterSelected = viewModel::setFilter
-            )
+            if (selectedTab == TabType.REMINDERS) {
+                RemindersFilterRow(
+                    selectedFilter = remindersFilter,
+                    onFilterSelected = viewModel::setRemindersFilter
+                )
+            } else if (selectedTab == TabType.HOME) {
+                FilterChipRow(
+                    selectedFilter = selectedFilter,
+                    onFilterSelected = viewModel::setFilter
+                )
+            }
 
             if (items.isEmpty()) {
                 EmptyTimelineState()
@@ -184,6 +179,7 @@ fun TimelineScreen(
                             TimelineItemRow(
                                 item = memoryItem,
                                 onClick = { onItemClick(memoryItem.id) },
+                                onFavoriteToggle = { viewModel.toggleFavorite(memoryItem.id) },
                                 onPinToggle = { viewModel.togglePin(memoryItem.id) },
                                 onDelete = { viewModel.deleteItem(memoryItem) },
                                 modifier = Modifier.animateItem()
@@ -192,6 +188,31 @@ fun TimelineScreen(
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun RemindersFilterRow(
+    selectedFilter: String,
+    onFilterSelected: (String) -> Unit
+) {
+    LazyRow(
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        val filters = listOf("Upcoming", "Completed")
+        items(filters) { filter ->
+            FilterChip(
+                selected = selectedFilter == filter,
+                onClick = { onFilterSelected(filter) },
+                label = { Text(filter, style = MaterialTheme.typography.labelMedium) },
+                shape = RoundedCornerShape(10.dp),
+                colors = FilterChipDefaults.filterChipColors(
+                    selectedContainerColor = MemolyPrimary.copy(alpha = 0.15f),
+                    selectedLabelColor = MemolyPrimary
+                )
+            )
         }
     }
 }
@@ -366,6 +387,7 @@ private fun TimelineDateHeader(
 fun TimelineItemRow(
     item: MemoryItem,
     onClick: () -> Unit,
+    onFavoriteToggle: () -> Unit,
     onPinToggle: () -> Unit,
     onDelete: () -> Unit,
     modifier: Modifier = Modifier
@@ -459,7 +481,7 @@ fun TimelineItemRow(
             elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
         ) {
             Column(modifier = Modifier.padding(12.dp)) {
-                // Top row: badge + pin/delete actions
+                // Top row: badge + actions
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -467,6 +489,16 @@ fun TimelineItemRow(
                 ) {
                     ContentTypeChip(type = item.contentType)
                     Row(verticalAlignment = Alignment.CenterVertically) {
+                        // Favorite icon
+                        Icon(
+                            imageVector = if (item.isFavorite) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
+                            contentDescription = "Favorite",
+                            tint = if (item.isFavorite) Color.Red else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f),
+                            modifier = Modifier
+                                .size(18.dp)
+                                .clickable { onFavoriteToggle() }
+                        )
+                        Spacer(modifier = Modifier.width(10.dp))
                         // Pin icon
                         Icon(
                             imageVector = if (item.isPinned) Icons.Filled.PushPin else Icons.Outlined.PushPin,
@@ -523,9 +555,10 @@ fun TimelineItemRow(
                     Spacer(modifier = Modifier.width(10.dp))
 
                     Column(modifier = Modifier.weight(1f)) {
-                        // Title — first line of content
+                        // Title — show title if available, otherwise first line of content
+                        val displayTitle = item.title?.takeIf { it.isNotBlank() } ?: (item.content.lines().firstOrNull() ?: item.content)
                         Text(
-                            text = item.content.lines().firstOrNull() ?: item.content,
+                            text = displayTitle,
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.SemiBold,
                             color = MaterialTheme.colorScheme.onSurface,
@@ -539,8 +572,7 @@ fun TimelineItemRow(
                             item.contentType == ContentType.SCREENSHOT -> item.sourceApp ?: "Screenshot"
                             item.sourceApp != null -> item.sourceApp
                             item.content.lines().size > 1 -> item.content.lines().drop(1).joinToString(" ").take(60)
-                            item.reminderTime != null -> item.reminderTime.toReminderDisplayString()
-                            else -> ""
+                            else -> if (item.title?.isNotBlank() == true) item.content.take(60) else ""
                         }
                         if (subtitle.isNotBlank()) {
                             Spacer(modifier = Modifier.height(2.dp))
@@ -559,7 +591,30 @@ fun TimelineItemRow(
                 if (item.reminderTime != null) {
                     Spacer(modifier = Modifier.height(8.dp))
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                        ReminderBadge(reminderTime = item.reminderTime.toTimeString())
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = if (item.isReminderDone) MaterialTheme.colorScheme.surfaceVariant else MemolySecondary.copy(alpha = 0.2f)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = if (item.isReminderDone) Icons.Outlined.CheckCircle else Icons.Outlined.Notifications,
+                                    contentDescription = null,
+                                    tint = if (item.isReminderDone) MaterialTheme.colorScheme.onSurfaceVariant else MemolySecondary,
+                                    modifier = Modifier.size(14.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = item.reminderTime.toTimeString(),
+                                    style = MaterialTheme.typography.labelSmall.copy(
+                                        textDecoration = if (item.isReminderDone) androidx.compose.ui.text.style.TextDecoration.LineThrough else null
+                                    ),
+                                    color = if (item.isReminderDone) MaterialTheme.colorScheme.onSurfaceVariant else MemolySecondary
+                                )
+                            }
+                        }
                     }
                 }
 

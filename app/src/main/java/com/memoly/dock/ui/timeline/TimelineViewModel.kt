@@ -16,24 +16,30 @@ import kotlinx.coroutines.launch
  * ViewModel for the Timeline screen.
  * Handles search, filtering, and memory item operations.
  */
+enum class TabType {
+    HOME, FAVORITES, REMINDERS, NOTES
+}
+
 @OptIn(ExperimentalCoroutinesApi::class, FlowPreview::class)
 class TimelineViewModel(application: Application) : AndroidViewModel(application) {
 
     private val repository: MemoryRepository
 
-    /** Current search query */
     private val _searchQuery = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
 
-    /** Whether search is active */
     private val _isSearchActive = MutableStateFlow(false)
     val isSearchActive: StateFlow<Boolean> = _isSearchActive.asStateFlow()
 
-    /** Content type filter */
     private val _selectedFilter = MutableStateFlow<ContentType?>(null)
     val selectedFilter: StateFlow<ContentType?> = _selectedFilter.asStateFlow()
 
-    /** All memory items (reactive) */
+    private val _selectedTab = MutableStateFlow(TabType.HOME)
+    val selectedTab: StateFlow<TabType> = _selectedTab.asStateFlow()
+
+    private val _remindersFilter = MutableStateFlow<String>("Upcoming") // "Upcoming" or "Completed"
+    val remindersFilter: StateFlow<String> = _remindersFilter.asStateFlow()
+
     val memoryItems: StateFlow<List<MemoryItem>>
 
     init {
@@ -42,13 +48,26 @@ class TimelineViewModel(application: Application) : AndroidViewModel(application
 
         memoryItems = combine(
             _searchQuery.debounce(300),
-            _selectedFilter
-        ) { query, filter ->
-            Pair(query, filter)
-        }.flatMapLatest { (query, filter) ->
+            _selectedFilter,
+            _selectedTab,
+            _remindersFilter
+        ) { query, filter, tab, remFilter ->
+            data class FilterState(val query: String, val filter: ContentType?, val tab: TabType, val remFilter: String)
+            FilterState(query, filter, tab, remFilter)
+        }.flatMapLatest { state ->
             when {
-                query.isNotBlank() -> repository.searchItems(query)
-                filter != null -> repository.getItemsByType(filter)
+                state.query.isNotBlank() -> repository.searchItems(state.query)
+                state.tab == TabType.FAVORITES -> repository.getFavorites()
+                state.tab == TabType.NOTES -> repository.getItemsByType(ContentType.NOTE)
+                state.tab == TabType.REMINDERS -> repository.getAllItems().map { items -> 
+                    val now = System.currentTimeMillis()
+                    items.filter { 
+                        if (it.reminderTime == null) false
+                        else if (state.remFilter == "Upcoming") it.reminderTime > now
+                        else it.reminderTime <= now
+                    }.sortedBy { it.reminderTime }
+                }
+                state.filter != null -> repository.getItemsByType(state.filter)
                 else -> repository.getAllItems()
             }
         }.stateIn(
@@ -56,6 +75,15 @@ class TimelineViewModel(application: Application) : AndroidViewModel(application
             started = SharingStarted.WhileSubscribed(5000),
             initialValue = emptyList()
         )
+    }
+
+    fun setTab(tab: TabType) {
+        _selectedTab.value = tab
+        _selectedFilter.value = null
+    }
+
+    fun setRemindersFilter(filter: String) {
+        _remindersFilter.value = filter
     }
 
     fun updateSearchQuery(query: String) {
@@ -76,6 +104,12 @@ class TimelineViewModel(application: Application) : AndroidViewModel(application
     fun togglePin(id: Long) {
         viewModelScope.launch {
             repository.togglePin(id)
+        }
+    }
+
+    fun toggleFavorite(id: Long) {
+        viewModelScope.launch {
+            repository.toggleFavorite(id)
         }
     }
 

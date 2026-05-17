@@ -3,7 +3,9 @@ package com.memoly.dock.ui.components
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
@@ -15,33 +17,27 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.memoly.dock.ui.theme.*
+import java.text.SimpleDateFormat
+import java.util.*
 
 /**
  * Quick command bar — smart suggestion chips above the keyboard.
- *
- * Chips:
- * - ?rem  → Insert reminder command (with optional inline time picker)
- * - ?todo → Tag as todo
- * - ?pin  → Pin the note
- * - ?link → Mark as link
- *
- * Feels lightweight and modern, similar to keyboard smart suggestions.
  */
 @Composable
 fun CommandBar(
     onCommandInsert: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var showTimePicker by remember { mutableStateOf(false) }
+    var showReminderPicker by remember { mutableStateOf(false) }
 
-    // Inline time picker for ?rem
-    if (showTimePicker) {
+    // Inline reminder picker for ?rem
+    if (showReminderPicker) {
         ReminderTimePicker(
             onTimeSelected = { timeStr ->
                 onCommandInsert("?rem $timeStr")
-                showTimePicker = false
+                showReminderPicker = false
             },
-            onDismiss = { showTimePicker = false }
+            onDismiss = { showReminderPicker = false }
         )
     }
 
@@ -55,7 +51,7 @@ fun CommandBar(
                 label = "?rem",
                 icon = Icons.Outlined.NotificationsActive,
                 color = MemolyWarning,
-                onClick = { showTimePicker = true }
+                onClick = { showReminderPicker = true }
             )
         }
         item {
@@ -121,14 +117,72 @@ private fun CommandChip(
 }
 
 /**
- * Inline time picker for the ?rem command.
- * Shows quick preset buttons + custom option.
+ * Enhanced reminder picker with 8 presets and Date/Time picker support.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ReminderTimePicker(
     onTimeSelected: (String) -> Unit,
     onDismiss: () -> Unit
 ) {
+    var showDatePicker by remember { mutableStateOf(false) }
+    var showTimePicker by remember { mutableStateOf(false) }
+    var selectedDateMillis by remember { mutableStateOf<Long?>(null) }
+
+    val datePickerState = rememberDatePickerState()
+    val timePickerState = rememberTimePickerState()
+
+    // Date Picker Dialog
+    if (showDatePicker) {
+        DatePickerDialog(
+            onDismissRequest = { showDatePicker = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    selectedDateMillis = datePickerState.selectedDateMillis
+                    showDatePicker = false
+                    showTimePicker = true
+                }) { Text("Next") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDatePicker = false }) { Text("Cancel") }
+            }
+        ) {
+            DatePicker(state = datePickerState)
+        }
+    }
+
+    // Time Picker Dialog
+    if (showTimePicker) {
+        AlertDialog(
+            onDismissRequest = { showTimePicker = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    val date = selectedDateMillis?.let { Date(it) } ?: Date()
+                    val calendar = Calendar.getInstance().apply {
+                        time = date
+                        set(Calendar.HOUR_OF_DAY, timePickerState.hour)
+                        set(Calendar.MINUTE, timePickerState.minute)
+                    }
+                    
+                    val sdf = SimpleDateFormat("d MMM h:mm a", Locale.getDefault())
+                    onTimeSelected(sdf.format(calendar.time))
+                    showTimePicker = false
+                }) { Text("Set") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showTimePicker = false }) { Text("Back") }
+            },
+            text = {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    TimePicker(state = timePickerState)
+                }
+            }
+        )
+    }
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
@@ -139,20 +193,31 @@ private fun ReminderTimePicker(
             )
         },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Column(
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.verticalScroll(rememberScrollState())
+            ) {
                 Text(
                     "Quick presets:",
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-                // Preset time chips
+
+                // Generate 8 presets
+                val tomorrow = Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, 1) }
+                val nextWeek = Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, 7) }
+                
+                val dateFormat = SimpleDateFormat("d MMM", Locale.getDefault())
+                
                 val presets = listOf(
-                    "in 15 minutes" to "in 15 minutes",
-                    "in 30 minutes" to "in 30 minutes",
-                    "in 1 hour" to "in 1 hours",
-                    "in 2 hours" to "in 2 hours",
+                    "15 mins" to "in 15 minutes",
+                    "1 hour" to "in 1 hour",
+                    "2 hours" to "in 2 hours",
+                    "Tonight 9pm" to "9pm",
                     "Tomorrow 9am" to "tomorrow 9am",
-                    "Tomorrow 6pm" to "tomorrow 6pm"
+                    "Tomorrow 8pm" to "tomorrow 8pm",
+                    "Next Week" to "${dateFormat.format(nextWeek.time)} 9am",
+                    "${dateFormat.format(tomorrow.time)} 10am" to "${dateFormat.format(tomorrow.time)} 10am"
                 )
 
                 presets.chunked(2).forEach { row ->
@@ -165,6 +230,7 @@ private fun ReminderTimePicker(
                                 onClick = { onTimeSelected(value) },
                                 modifier = Modifier.weight(1f),
                                 shape = RoundedCornerShape(10.dp),
+                                contentPadding = PaddingValues(horizontal = 4.dp),
                                 colors = ButtonDefaults.filledTonalButtonColors(
                                     containerColor = MemolyPrimary.copy(alpha = 0.1f),
                                     contentColor = MemolyPrimary
@@ -181,30 +247,49 @@ private fun ReminderTimePicker(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(4.dp))
+                HorizontalDivider(
+                    modifier = Modifier.padding(vertical = 4.dp),
+                    color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)
+                )
 
-                // Custom time input
-                var customTime by remember { mutableStateOf("") }
+                // Custom Date & Time Picker Button
+                Button(
+                    onClick = { showDatePicker = true },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(10.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MemolyPrimary
+                    )
+                ) {
+                    Icon(Icons.Outlined.CalendarMonth, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Pick Date & Time...")
+                }
+
+                // Manual custom input as fallback
+                var customText by remember { mutableStateOf("") }
                 OutlinedTextField(
-                    value = customTime,
-                    onValueChange = { customTime = it },
-                    label = { Text("Custom (e.g. 7pm, 3:30pm)") },
+                    value = customText,
+                    onValueChange = { customText = it },
+                    label = { Text("Or type (e.g. 20 May 8pm)", fontSize = 12.sp) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp),
+                    shape = RoundedCornerShape(10.dp),
+                    textStyle = LocalTextStyle.current.copy(fontSize = 13.sp),
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = MemolyPrimary,
                         unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
                     )
                 )
 
-                if (customTime.isNotBlank()) {
-                    FilledTonalButton(
-                        onClick = { onTimeSelected(customTime.trim()) },
+                if (customText.isNotBlank()) {
+                    Button(
+                        onClick = { onTimeSelected(customText.trim()) },
                         modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(10.dp)
+                        shape = RoundedCornerShape(10.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = MemolySecondary)
                     ) {
-                        Text("Set for $customTime")
+                        Text("Set: $customText")
                     }
                 }
             }

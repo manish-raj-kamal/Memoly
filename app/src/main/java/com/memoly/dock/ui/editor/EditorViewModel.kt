@@ -151,7 +151,7 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
                                 isPinned = _isPinned.value,
                                 reminderTime = reminderTime ?: existing.reminderTime,
                                 isReminderDone = if (reminderTime != null) false else existing.isReminderDone,
-                                imagePath = _attachedImageUri.value ?: existing.imagePath
+                                imagePath = _attachedImageUri.value
                             )
                         )
 

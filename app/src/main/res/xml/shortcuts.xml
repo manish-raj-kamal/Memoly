@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="new_memory"
+        android:enabled="true"
+        android:icon="@android:drawable/ic_menu_add"
+        android:shortcutShortLabel="@string/shortcut_new_memory_short"
+        android:shortcutLongLabel="@string/shortcut_new_memory_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.memoly.dock"
+            android:targetClass="com.memoly.dock.ui.quickcapture.QuickCaptureActivity" />
+        <categories android:name="android.shortcut.conversation" />
+    </shortcut>
+
+    <shortcut
+        android:shortcutId="quick_reminder"
+        android:enabled="true"
+        android:icon="@android:drawable/ic_popup_reminder"
+        android:shortcutShortLabel="@string/shortcut_reminder_short"
+        android:shortcutLongLabel="@string/shortcut_reminder_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.memoly.dock"
+            android:targetClass="com.memoly.dock.MainActivity" />
+        <categories android:name="android.shortcut.conversation" />
+    </shortcut>
+
+    <shortcut
+        android:shortcutId="save_screenshot"
+        android:enabled="true"
+        android:icon="@android:drawable/ic_menu_camera"
+        android:shortcutShortLabel="@string/shortcut_screenshot_short"
+        android:shortcutLongLabel="@string/shortcut_screenshot_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.memoly.dock"
+            android:targetClass="com.memoly.dock.MainActivity" />
+        <categories android:name="android.shortcut.conversation" />
+    </shortcut>
+</shortcuts>

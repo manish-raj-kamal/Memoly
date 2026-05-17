@@ -74,23 +74,40 @@ fun Long.toGroupDateString(): String {
 }
 
 /**
- * Check if a string contains or is a URL.
- * Uses Android's Patterns.WEB_URL for comprehensive matching
- * (handles .com, .org, .io, etc. even without http://).
+ * Extract all valid URLs from a string.
+ * Filters out false positives like "end.Of" sentence mistakes by requiring
+ * common TLDs or explicit protocols.
  */
-fun String.isUrl(): Boolean {
-    val trimmed = this.trim()
-    if (trimmed.contains(" ") && !trimmed.contains("http")) return false
-    return Patterns.WEB_URL.matcher(trimmed).matches() ||
-           trimmed.startsWith("http://") ||
-           trimmed.startsWith("https://")
+fun String.extractUrls(): List<String> {
+    val urls = mutableListOf<String>()
+    val matcher = Patterns.WEB_URL.matcher(this)
+    while (matcher.find()) {
+        val match = matcher.group()
+        if (match.startsWith("http://") || 
+            match.startsWith("https://") || 
+            match.startsWith("www.") || 
+            match.matches(Regex(".*\\.(com|org|net|io|co|us|uk|de|gov|edu|info|me|app|tv|in|be|ca)(\\/.*)?", RegexOption.IGNORE_CASE))) {
+            urls.add(match)
+        }
+    }
+    return urls
 }
 
 /**
- * Check if a string contains a URL anywhere in it.
+ * Check if a string is strictly a single URL.
+ */
+fun String.isUrl(): Boolean {
+    val trimmed = this.trim()
+    if (trimmed.contains(" ")) return false
+    val urls = trimmed.extractUrls()
+    return urls.size == 1 && urls.first() == trimmed
+}
+
+/**
+ * Check if a string contains at least one valid URL.
  */
 fun String.containsUrl(): Boolean {
-    return Patterns.WEB_URL.matcher(this).find()
+    return extractUrls().isNotEmpty()
 }
 
 /** Get app name from package name */

@@ -53,13 +53,29 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
     private val _attachedImageUri = MutableStateFlow<String?>(null)
     val attachedImageUri: StateFlow<String?> = _attachedImageUri.asStateFlow()
 
+    private val _isListMode = MutableStateFlow(false)
+    val isListMode: StateFlow<Boolean> = _isListMode.asStateFlow()
+
     init {
         val db = MemolyDatabase.getDatabase(application)
         repository = MemoryRepository(db.memoryItemDao())
     }
 
     fun updateContent(text: String) {
-        _content.value = text
+        val oldContent = _content.value
+        var newText = text
+
+        // Handle list mode auto-continuation
+        if (_isListMode.value && text.length > oldContent.length && text.endsWith("\n")) {
+            val lines = text.split("\n")
+            val lastLine = lines.getOrNull(lines.size - 2) ?: ""
+            if (lastLine.startsWith("☐ ") || lastLine.startsWith("- ")) {
+                val prefix = if (lastLine.startsWith("☐ ")) "☐ " else "- "
+                newText = text + prefix
+            }
+        }
+
+        _content.value = newText
         // Auto-detect content type
         _contentType.value = when {
             _attachedImageUri.value != null -> ContentType.IMAGE
@@ -91,6 +107,29 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
         _contentType.value = when {
             _content.value.isUrl() || _content.value.containsUrl() -> ContentType.LINK
             else -> ContentType.NOTE
+        }
+    }
+
+    fun toggleListMode() {
+        val currentContent = _content.value
+        val lines = currentContent.split("\n").toMutableList()
+        val lastLineIndex = lines.size - 1
+        val lastLine = lines[lastLineIndex]
+
+        if (!_isListMode.value) {
+            // Turning ON: Add checkbox to current line if not present
+            if (!lastLine.startsWith("☐ ")) {
+                lines[lastLineIndex] = "☐ $lastLine"
+                _content.value = lines.joinToString("\n")
+            }
+            _isListMode.value = true
+        } else {
+            // Turning OFF: Remove checkbox from current line if present
+            if (lastLine.startsWith("☐ ")) {
+                lines[lastLineIndex] = lastLine.removePrefix("☐ ").trimStart()
+                _content.value = lines.joinToString("\n")
+            }
+            _isListMode.value = false
         }
     }
 

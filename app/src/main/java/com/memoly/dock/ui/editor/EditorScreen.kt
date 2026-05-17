@@ -20,6 +20,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
@@ -31,14 +32,11 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
-import com.memoly.dock.ui.components.CommandBar
-import com.memoly.dock.ui.components.ContentTypeChip
+import com.memoly.dock.ui.components.*
 import com.memoly.dock.ui.theme.MemolyTertiary
 
 /**
- * Clean, minimal note editor screen.
- * Supports creating and editing memory items with tags, pin, image attachments,
- * and a quick command bar above the keyboard.
+ * Redesigned note editor screen with compact toolbar and checklist mode.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -54,14 +52,23 @@ fun EditorScreen(
     val saveComplete by viewModel.saveComplete.collectAsStateWithLifecycle()
     val contentType by viewModel.contentType.collectAsStateWithLifecycle()
     val attachedImageUri by viewModel.attachedImageUri.collectAsStateWithLifecycle()
+    val isListMode by viewModel.isListMode.collectAsStateWithLifecycle()
 
     val focusRequester = remember { FocusRequester() }
     val isEditing = editItemId != null
     var isTextFieldFocused by remember { mutableStateOf(false) }
+    var showTagDialog by remember { mutableStateOf(false) }
+    var showReminderPicker by remember { mutableStateOf(false) }
 
-    // Image picker launcher
+    // Image/File picker launchers
     val imagePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia()
+    ) { uri: Uri? ->
+        uri?.let { viewModel.attachImage(it.toString()) }
+    }
+
+    val filePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
         uri?.let { viewModel.attachImage(it.toString()) }
     }
@@ -81,6 +88,46 @@ fun EditorScreen(
         focusRequester.requestFocus()
     }
 
+    // Tag Editor Dialog
+    if (showTagDialog) {
+        var tempTags by remember { mutableStateOf(tags ?: "") }
+        AlertDialog(
+            onDismissRequest = { showTagDialog = false },
+            title = { Text("Tags") },
+            text = {
+                OutlinedTextField(
+                    value = tempTags,
+                    onValueChange = { tempTags = it },
+                    placeholder = { Text("work, ideas, travel") },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    viewModel.updateTags(tempTags)
+                    showTagDialog = false
+                }) { Text("Done") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showTagDialog = false }) { Text("Cancel") }
+            }
+        )
+    }
+
+    // Reminder Picker Dialog
+    if (showReminderPicker) {
+        ReminderTimePicker(
+            onTimeSelected = { timeStr ->
+                viewModel.updateContent(
+                    if (content.isBlank()) "?rem $timeStr" else "$content ?rem $timeStr"
+                )
+                showReminderPicker = false
+            },
+            onDismiss = { showReminderPicker = false }
+        )
+    }
+
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
@@ -98,7 +145,6 @@ fun EditorScreen(
                     }
                 },
                 actions = {
-                    // Pin toggle
                     IconButton(onClick = viewModel::togglePin) {
                         Icon(
                             imageVector = if (isPinned) Icons.Filled.PushPin else Icons.Outlined.PushPin,
@@ -106,32 +152,22 @@ fun EditorScreen(
                             tint = if (isPinned) MemolyTertiary else MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
-                    // Save button
                     FilledTonalButton(
                         onClick = viewModel::save,
-                        enabled = content.isNotBlank() && !isSaving,
+                        enabled = (content.isNotBlank() || attachedImageUri != null) && !isSaving,
                         shape = RoundedCornerShape(12.dp),
                         modifier = Modifier.padding(end = 8.dp)
                     ) {
                         if (isSaving) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(16.dp),
-                                strokeWidth = 2.dp
-                            )
+                            CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
                         } else {
-                            Icon(
-                                Icons.Filled.Check,
-                                contentDescription = null,
-                                modifier = Modifier.size(18.dp)
-                            )
+                            Icon(Icons.Filled.Check, contentDescription = null, modifier = Modifier.size(18.dp))
                             Spacer(modifier = Modifier.width(4.dp))
                             Text("Save")
                         }
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background
-                )
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background)
             )
         }
     ) { padding ->
@@ -139,45 +175,24 @@ fun EditorScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .padding(horizontal = 20.dp)
+                .padding(horizontal = 16.dp)
                 .imePadding()
         ) {
-            // Content type indicator + reminder indicator
-            AnimatedVisibility(
-                visible = content.isNotBlank(),
-                enter = fadeIn() + slideInVertically(),
-                exit = fadeOut() + slideOutVertically()
+            // Header Info (Type Chip + Tags Preview)
+            Row(
+                modifier = Modifier.padding(bottom = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Row(
-                    modifier = Modifier.padding(bottom = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    ContentTypeChip(type = contentType)
-                    if (content.contains("?rem", ignoreCase = true)) {
-                        Surface(
-                            shape = RoundedCornerShape(8.dp),
-                            color = MaterialTheme.colorScheme.tertiary.copy(alpha = 0.12f)
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(4.dp)
-                            ) {
-                                Icon(
-                                    Icons.Outlined.NotificationsActive,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(14.dp),
-                                    tint = MaterialTheme.colorScheme.tertiary
-                                )
-                                Text(
-                                    "Reminder detected",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.tertiary
-                                )
-                            }
-                        }
-                    }
+                ContentTypeChip(type = contentType)
+                if (!tags.isNullOrBlank()) {
+                    Text(
+                        text = tags?.split(",")?.joinToString(" ") { "#${it.trim()}" } ?: "",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                    )
                 }
             }
 
@@ -187,40 +202,32 @@ fun EditorScreen(
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(160.dp)
+                            .height(180.dp)
                             .padding(bottom = 12.dp)
                             .clip(RoundedCornerShape(16.dp))
                     ) {
                         AsyncImage(
                             model = uri,
                             contentDescription = "Attached image",
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .clip(RoundedCornerShape(16.dp)),
+                            modifier = Modifier.fillMaxSize(),
                             contentScale = ContentScale.Crop
                         )
-                        // Remove image button
                         IconButton(
                             onClick = { viewModel.removeImage() },
                             modifier = Modifier
                                 .align(Alignment.TopEnd)
-                                .padding(4.dp)
+                                .padding(8.dp)
                                 .size(28.dp)
                                 .clip(CircleShape)
                                 .background(Color.Black.copy(alpha = 0.5f))
                         ) {
-                            Icon(
-                                Icons.Filled.Close,
-                                contentDescription = "Remove image",
-                                tint = Color.White,
-                                modifier = Modifier.size(16.dp)
-                            )
+                            Icon(Icons.Filled.Close, contentDescription = "Remove", tint = Color.White, modifier = Modifier.size(16.dp))
                         }
                     }
                 }
             }
 
-            // Main content editor
+            // Editor Area
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -231,7 +238,6 @@ fun EditorScreen(
             ) {
                 Column(modifier = Modifier.fillMaxSize()) {
                     val title by viewModel.title.collectAsStateWithLifecycle()
-                    
                     BasicTextField(
                         value = title,
                         onValueChange = viewModel::updateTitle,
@@ -254,13 +260,11 @@ fun EditorScreen(
                             innerTextField()
                         }
                     )
-                    
                     Spacer(modifier = Modifier.height(8.dp))
-                    
                     Box(modifier = Modifier.weight(1f)) {
                         if (content.isEmpty()) {
                             Text(
-                                text = "What do you want to remember?\n\nTip: Use command chips below or type \"?rem 7pm\"",
+                                text = "Start writing...",
                                 style = MaterialTheme.typography.bodyLarge,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
                             )
@@ -273,7 +277,8 @@ fun EditorScreen(
                                 .focusRequester(focusRequester)
                                 .onFocusChanged { isTextFieldFocused = it.isFocused },
                             textStyle = MaterialTheme.typography.bodyLarge.copy(
-                                color = MaterialTheme.colorScheme.onSurface
+                                color = MaterialTheme.colorScheme.onSurface,
+                                lineHeight = androidx.compose.ui.unit.TextUnit.Unspecified
                             ),
                             cursorBrush = SolidColor(MaterialTheme.colorScheme.primary)
                         )
@@ -281,70 +286,19 @@ fun EditorScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(12.dp))
 
-            // Command bar — visible while typing
-            AnimatedVisibility(
-                visible = isTextFieldFocused,
-                enter = fadeIn() + slideInVertically { it / 2 },
-                exit = fadeOut() + slideOutVertically { it / 2 }
-            ) {
-                CommandBar(
-                    onCommandInsert = { command ->
-                        viewModel.updateContent(
-                            if (content.isBlank()) command else "$content $command"
-                        )
-                    }
-                )
-            }
+            // Compact Toolbar — visible while typing or always at bottom
+            EditorToolbar(
+                isListMode = isListMode,
+                onFileClick = { filePickerLauncher.launch("*/*") },
+                onImageClick = { imagePickerLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
+                onTagClick = { showTagDialog = true },
+                onListToggle = { viewModel.toggleListMode() },
+                onReminderClick = { showReminderPicker = true }
+            )
 
             Spacer(modifier = Modifier.height(8.dp))
-
-            // Bottom toolbar: image attach + tags
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                // Attach image button
-                IconButton(
-                    onClick = {
-                        imagePickerLauncher.launch(
-                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
-                        )
-                    }
-                ) {
-                    Icon(
-                        Icons.Outlined.Image,
-                        contentDescription = "Attach image",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-
-                // Tags input
-                OutlinedTextField(
-                    value = tags,
-                    onValueChange = viewModel::updateTags,
-                    label = { Text("Tags (comma separated)") },
-                    placeholder = { Text("work, ideas") },
-                    singleLine = true,
-                    modifier = Modifier.weight(1f),
-                    shape = RoundedCornerShape(12.dp),
-                    leadingIcon = {
-                        Icon(
-                            Icons.Outlined.Tag,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(20.dp)
-                        )
-                    },
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = MaterialTheme.colorScheme.primary,
-                        unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
-                    )
-                )
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
         }
     }
 }

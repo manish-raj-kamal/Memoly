@@ -33,6 +33,9 @@
                 <category android:name="android.intent.category.LAUNCHER" />
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
+            <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="@xml/shortcuts" />
         </activity>
 
         <!-- Quick Capture Activity (transparent overlay) -->
@@ -46,9 +49,9 @@
             android:taskAffinity=""
             android:configChanges="orientation|screenSize" />
 
-        <!-- Share Receiver Activity (ACTION_SEND) -->
+        <!-- Memoly Share Activity (ACTION_SEND) -->
         <activity
-            android:name=".ShareReceiverActivity"
+            android:name=".MemolyShareActivity"
             android:exported="true"
             android:label="Save to Memoly"
             android:icon="@mipmap/ic_launcher"
@@ -84,6 +87,29 @@
                 <action android:name="android.intent.action.SEND" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="text/uri-list" />
+            </intent-filter>
+            <!-- Receive documents/files -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="application/*" />
+            </intent-filter>
+            <!-- Receive multiple documents/files -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="application/*" />
+            </intent-filter>
+            <!-- Catch all fallback for Vivo OriginOS -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="*/*" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="*/*" />
             </intent-filter>
         </activity>
 

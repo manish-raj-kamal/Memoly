@@ -1,6 +1,8 @@
 package com.memoly.dock.ui.editor
 
 import android.app.Application
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.memoly.dock.data.local.MemolyDatabase
@@ -18,16 +20,16 @@ import kotlinx.coroutines.launch
 
 /**
  * ViewModel for the note editor screen.
- * Handles creating and editing memory items with reminder parsing
- * and image attachment support.
+ * Handles creating and editing memory items with reminder parsing,
+ * inline image support, and smart checklist mode.
  */
 class EditorViewModel(application: Application) : AndroidViewModel(application) {
 
     private val repository: MemoryRepository
     private val app = application
 
-    private val _content = MutableStateFlow("")
-    val content: StateFlow<String> = _content.asStateFlow()
+    private val _contentValue = MutableStateFlow(TextFieldValue(""))
+    val contentValue: StateFlow<TextFieldValue> = _contentValue.asStateFlow()
 
     private val _title = MutableStateFlow("")
     val title: StateFlow<String> = _title.asStateFlow()
@@ -61,25 +63,33 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
         repository = MemoryRepository(db.memoryItemDao())
     }
 
-    fun updateContent(text: String) {
-        val oldContent = _content.value
-        var newText = text
+    fun updateContentValue(value: TextFieldValue) {
+        val oldText = _contentValue.value.text
+        val newText = value.text
 
-        // Handle list mode auto-continuation
-        if (_isListMode.value && text.length > oldContent.length && text.endsWith("\n")) {
-            val lines = text.split("\n")
+        var finalValue = value
+
+        // Handle list mode auto-continuation on Enter
+        if (_isListMode.value && newText.length > oldText.length && newText.endsWith("\n")) {
+            val lines = newText.split("\n")
+            // Check the line that was just finished (second to last)
             val lastLine = lines.getOrNull(lines.size - 2) ?: ""
-            if (lastLine.startsWith("☐ ") || lastLine.startsWith("- ")) {
-                val prefix = if (lastLine.startsWith("☐ ")) "☐ " else "- "
-                newText = text + prefix
+            if (lastLine.trim().startsWith("☐") || lastLine.trim().startsWith("☑")) {
+                val prefix = "☐ "
+                val updatedText = newText + prefix
+                finalValue = value.copy(
+                    text = updatedText,
+                    selection = TextRange(updatedText.length)
+                )
             }
         }
 
-        _content.value = newText
+        _contentValue.value = finalValue
+        
         // Auto-detect content type
         _contentType.value = when {
             _attachedImageUri.value != null -> ContentType.IMAGE
-            text.isUrl() || text.containsUrl() -> ContentType.LINK
+            finalValue.text.isUrl() || finalValue.text.containsUrl() -> ContentType.LINK
             else -> ContentType.NOTE
         }
     }
@@ -97,39 +107,104 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun attachImage(uri: String) {
-        _attachedImageUri.value = uri
+        // For inline media, we'll append a marker to the text
+        // Format: [img:uri]
+        val marker = "\n[img:$uri]\n"
+        val currentText = _contentValue.value.text
+        val newText = if (currentText.isBlank()) marker else "$currentText$marker"
+        
+        _contentValue.value = TextFieldValue(
+            text = newText,
+            selection = TextRange(newText.length)
+        )
         _contentType.value = ContentType.IMAGE
+    }
+    
+    fun attachFile(uri: String, fileName: String) {
+        // Format: [file:uri|name]
+        val marker = "\n[file:$uri|$fileName]\n"
+        val currentText = _contentValue.value.text
+        val newText = if (currentText.isBlank()) marker else "$currentText$marker"
+        
+        _contentValue.value = TextFieldValue(
+            text = newText,
+            selection = TextRange(newText.length)
+        )
+        _contentType.value = ContentType.FILE
     }
 
     fun removeImage() {
         _attachedImageUri.value = null
         // Re-detect content type
         _contentType.value = when {
-            _content.value.isUrl() || _content.value.containsUrl() -> ContentType.LINK
+            _contentValue.value.text.isUrl() || _contentValue.value.text.containsUrl() -> ContentType.LINK
             else -> ContentType.NOTE
         }
     }
 
     fun toggleListMode() {
-        val currentContent = _content.value
-        val lines = currentContent.split("\n").toMutableList()
-        val lastLineIndex = lines.size - 1
-        val lastLine = lines[lastLineIndex]
+        val currentText = _contentValue.value.text
+        val selection = _contentValue.value.selection
+        
+        // If we are at the end of a line or starting a new one
+        val lines = currentText.split("\n").toMutableList()
+        
+        // Find which line the cursor is currently on
+        var charCount = 0
+        var targetLineIndex = 0
+        for (i in lines.indices) {
+            charCount += lines[i].length + 1 // +1 for the newline
+            if (selection.start < charCount) {
+                targetLineIndex = i
+                break
+            }
+        }
+        
+        val targetLine = lines[targetLineIndex]
 
         if (!_isListMode.value) {
-            // Turning ON: Add checkbox to current line if not present
-            if (!lastLine.startsWith("☐ ")) {
-                lines[lastLineIndex] = "☐ $lastLine"
-                _content.value = lines.joinToString("\n")
+            // Turning ON: Add checkbox to target line
+            if (!targetLine.trim().startsWith("☐") && !targetLine.trim().startsWith("☑")) {
+                lines[targetLineIndex] = "☐ $targetLine"
+                val updatedText = lines.joinToString("\n")
+                _contentValue.value = TextFieldValue(
+                    text = updatedText,
+                    selection = TextRange(selection.start + 2) // Move cursor after checkbox
+                )
             }
             _isListMode.value = true
         } else {
-            // Turning OFF: Remove checkbox from current line if present
-            if (lastLine.startsWith("☐ ")) {
-                lines[lastLineIndex] = lastLine.removePrefix("☐ ").trimStart()
-                _content.value = lines.joinToString("\n")
+            // Turning OFF: Remove checkbox from target line
+            if (targetLine.trim().startsWith("☐") || targetLine.trim().startsWith("☑")) {
+                val cleanedLine = targetLine.replaceFirst("☐ ", "").replaceFirst("☑ ", "")
+                lines[targetLineIndex] = cleanedLine
+                val updatedText = lines.joinToString("\n")
+                _contentValue.value = TextFieldValue(
+                    text = updatedText,
+                    selection = TextRange(maxOf(0, selection.start - 2))
+                )
             }
             _isListMode.value = false
+        }
+    }
+    
+    /**
+     * Toggles a checkbox state at a specific character offset.
+     * Called when user clicks a checkbox in the text.
+     */
+    fun toggleCheckboxAt(offset: Int) {
+        val currentText = _contentValue.value.text
+        if (offset < 0 || offset >= currentText.length) return
+        
+        val char = currentText[offset]
+        val newText = when (char) {
+            '☐' -> currentText.substring(0, offset) + '☑' + currentText.substring(offset + 1)
+            '☑' -> currentText.substring(0, offset) + '☐' + currentText.substring(offset + 1)
+            else -> currentText
+        }
+        
+        if (newText != currentText) {
+            _contentValue.value = _contentValue.value.copy(text = newText)
         }
     }
 
@@ -141,7 +216,10 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
             val item = repository.getItemByIdOnce(itemId)
             if (item != null) {
                 _editingItemId.value = item.id
-                _content.value = item.content
+                _contentValue.value = TextFieldValue(
+                    text = item.content,
+                    selection = TextRange(item.content.length)
+                )
                 _title.value = item.title ?: ""
                 _tags.value = item.tags ?: ""
                 _isPinned.value = item.isPinned
@@ -153,11 +231,10 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
 
     /**
      * Save the current note (create or update).
-     * Handles reminder parsing with ?rem command and image attachments.
      */
     fun save() {
-        val currentContent = _content.value.trim()
-        if (currentContent.isBlank() && _attachedImageUri.value == null) return
+        val currentContent = _contentValue.value.text.trim()
+        if (currentContent.isBlank()) return
 
         _isSaving.value = true
 
@@ -165,20 +242,20 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
             try {
                 // Parse for reminder commands
                 val parseResult = ReminderParser.parse(currentContent)
-                val finalContent = parseResult.cleanedText.ifBlank { "Image" }
+                val finalContent = parseResult.cleanedText
                 val reminderTime = parseResult.reminderTimeMillis
 
+                // Type detection
                 val contentType = when {
-                    _attachedImageUri.value != null -> ContentType.IMAGE
+                    finalContent.contains("[img:") -> ContentType.IMAGE
+                    finalContent.contains("[file:") -> ContentType.FILE
                     finalContent.isUrl() || finalContent.containsUrl() -> ContentType.LINK
-                    _contentType.value == ContentType.SCREENSHOT -> ContentType.SCREENSHOT
                     else -> ContentType.NOTE
                 }
 
                 val editId = _editingItemId.value
 
                 if (editId != null) {
-                    // Update existing item
                     val existing = repository.getItemByIdOnce(editId)
                     if (existing != null) {
                         repository.update(
@@ -190,23 +267,15 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
                                 isPinned = _isPinned.value,
                                 reminderTime = reminderTime ?: existing.reminderTime,
                                 isReminderDone = if (reminderTime != null) false else existing.isReminderDone,
-                                imagePath = _attachedImageUri.value,
                                 lastModifiedAt = System.currentTimeMillis()
                             )
                         )
 
-                        // Schedule reminder if present
                         if (reminderTime != null) {
-                            ReminderWorker.schedule(
-                                context = app,
-                                memoryId = editId,
-                                content = finalContent,
-                                triggerAtMillis = reminderTime
-                            )
+                            ReminderWorker.schedule(app, editId, finalContent, reminderTime)
                         }
                     }
                 } else {
-                    // Create new item
                     val newId = repository.insert(
                         MemoryItem(
                             content = finalContent,
@@ -214,19 +283,12 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
                             contentType = contentType,
                             tags = _tags.value.takeIf { it.isNotBlank() },
                             isPinned = _isPinned.value,
-                            reminderTime = reminderTime,
-                            imagePath = _attachedImageUri.value
+                            reminderTime = reminderTime
                         )
                     )
 
-                    // Schedule reminder if present
                     if (reminderTime != null) {
-                        ReminderWorker.schedule(
-                            context = app,
-                            memoryId = newId,
-                            content = finalContent,
-                            triggerAtMillis = reminderTime
-                        )
+                        ReminderWorker.schedule(app, newId, finalContent, reminderTime)
                     }
                 }
 

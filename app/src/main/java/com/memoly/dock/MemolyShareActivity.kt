@@ -5,21 +5,20 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
-import android.provider.OpenableColumns
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import com.memoly.dock.data.local.MemolyDatabase
 import com.memoly.dock.data.model.MemoryItem
 import com.memoly.dock.domain.model.ContentType
+import com.memoly.dock.utils.buildInlineFileMarker
+import com.memoly.dock.utils.buildInlineImageMarker
+import com.memoly.dock.utils.copyUriToInternalStorage
+import com.memoly.dock.utils.getDisplayName
 import com.memoly.dock.utils.isUrl
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.io.File
-import java.io.FileOutputStream
-import java.io.InputStream
-import java.util.UUID
 
 /**
  * Receives shared content from other apps (ACTION_SEND / ACTION_SEND_MULTIPLE).
@@ -67,12 +66,11 @@ class MemolyShareActivity : ComponentActivity() {
                 } else if (type.startsWith("image/")) {
                     val uri = getUriExtra(intent)
                     if (uri != null) {
-                        val localPath = copyUriToInternalStorage(uri)
+                        val localPath = copyUriToInternalStorage(this@MemolyShareActivity, uri)
                         if (localPath != null) {
                             saveMemory(
-                                content = "Shared image",
+                                content = buildInlineImageMarker(localPath),
                                 contentType = ContentType.IMAGE,
-                                imagePath = localPath,
                                 sourceApp = sourceApp
                             )
                         } else {
@@ -86,12 +84,11 @@ class MemolyShareActivity : ComponentActivity() {
                     val uri = getUriExtra(intent)
                     if (uri != null) {
                         val fileName = getFileName(uri) ?: "Shared Document"
-                        val localPath = copyUriToInternalStorage(uri)
+                        val localPath = copyUriToInternalStorage(this@MemolyShareActivity, uri, fileName)
                         if (localPath != null) {
                             saveMemory(
-                                content = fileName,
+                                content = buildInlineFileMarker(localPath, fileName),
                                 contentType = ContentType.FILE,
-                                imagePath = localPath,
                                 sourceApp = sourceApp
                             )
                         } else {
@@ -129,17 +126,21 @@ class MemolyShareActivity : ComponentActivity() {
                 var savedCount = 0
 
                 uris.forEach { uri ->
-                    val localPath = copyUriToInternalStorage(uri)
+                    val fileName = getFileName(uri) ?: "Shared Document"
+                    val localPath = copyUriToInternalStorage(this@MemolyShareActivity, uri, fileName)
                     if (localPath != null) {
                         val isImage = type.startsWith("image/")
                         val contentType = if (isImage) ContentType.IMAGE else ContentType.FILE
-                        val content = if (isImage) "Shared image" else (getFileName(uri) ?: "Shared Document")
+                        val content = if (isImage) {
+                            buildInlineImageMarker(localPath)
+                        } else {
+                            buildInlineFileMarker(localPath, fileName)
+                        }
 
                         db.memoryItemDao().insert(
                             MemoryItem(
                                 content = content,
                                 contentType = contentType,
-                                imagePath = localPath,
                                 sourceApp = sourceApp
                             )
                         )
@@ -214,7 +215,6 @@ class MemolyShareActivity : ComponentActivity() {
     private suspend fun saveMemory(
         content: String,
         contentType: ContentType,
-        imagePath: String? = null,
         sourceApp: String? = null
     ) {
         val db = MemolyDatabase.getDatabase(this)
@@ -222,7 +222,6 @@ class MemolyShareActivity : ComponentActivity() {
             MemoryItem(
                 content = content,
                 contentType = contentType,
-                imagePath = imagePath,
                 sourceApp = sourceApp
             )
         )
@@ -259,67 +258,7 @@ class MemolyShareActivity : ComponentActivity() {
      *
      * @return The absolute path to the copied file in internal storage, or null if failed.
      */
-    private fun copyUriToInternalStorage(uri: Uri): String? {
-        return try {
-            val extension = getFileExtension(uri)
-            val fileName = "${UUID.randomUUID()}.$extension"
-            
-            // Create a "shared_memories" directory in internal files
-            val sharedDir = File(filesDir, "shared_memories")
-            if (!sharedDir.exists()) {
-                sharedDir.mkdirs()
-            }
-            
-            val destFile = File(sharedDir, fileName)
-            
-            contentResolver.openInputStream(uri)?.use { inputStream ->
-                FileOutputStream(destFile).use { outputStream ->
-                    inputStream.copyTo(outputStream)
-                }
-            }
-            
-            // Return as a file:// URI string so Coil/AsyncImage and standard loaders can parse it
-            Uri.fromFile(destFile).toString()
-        } catch (e: Exception) {
-            e.printStackTrace()
-            null
-        }
-    }
-
-    private fun getFileExtension(uri: Uri): String {
-        val mimeType = contentResolver.getType(uri)
-        return when {
-            mimeType?.startsWith("image/png") == true -> "png"
-            mimeType?.startsWith("image/jpeg") == true -> "jpg"
-            mimeType?.startsWith("application/pdf") == true -> "pdf"
-            mimeType?.contains("excel") == true || mimeType?.contains("spreadsheet") == true -> "xls"
-            mimeType?.contains("word") == true || mimeType?.contains("document") == true -> "doc"
-            else -> "dat"
-        }
-    }
-
     private fun getFileName(uri: Uri): String? {
-        var result: String? = null
-        if (uri.scheme == "content") {
-            try {
-                contentResolver.query(uri, null, null, null, null)?.use { cursor ->
-                    if (cursor.moveToFirst()) {
-                        val index = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
-                        if (index != -1) {
-                            result = cursor.getString(index)
-                        }
-                    }
-                }
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
-        }
-        if (result == null) {
-            result = uri.path?.let { path ->
-                val cut = path.lastIndexOf('/')
-                if (cut != -1) path.substring(cut + 1) else path
-            }
-        }
-        return result
+        return getDisplayName(this, uri)
     }
 }

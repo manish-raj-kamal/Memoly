@@ -431,6 +431,25 @@ fun EditorScreen(
 
                         var textLayoutResult by remember { mutableStateOf<TextLayoutResult?>(null) }
 
+                        LaunchedEffect(contentValue.selection.start, textLayoutResult) {
+                            val layout = textLayoutResult ?: return@LaunchedEffect
+                            if (annotatedString.isEmpty()) return@LaunchedEffect
+                            focusRequester.requestFocus()
+
+                            val transformedOffset = offsetMapping.originalToTransformed(
+                                contentValue.selection.start.coerceIn(0, contentValue.text.length)
+                            ).coerceAtMost(maxOf(annotatedString.length - 1, 0))
+                            val lineIndex = layout.getLineForOffset(transformedOffset)
+                            val lineBottom = layout.getLineBottom(lineIndex).toInt()
+                            val bottomPadding = with(density) { 72.dp.toPx() }.toInt()
+                            val targetScroll = (lineBottom - scrollState.viewportSize + bottomPadding)
+                                .coerceIn(0, scrollState.maxValue)
+
+                            if (targetScroll > scrollState.value) {
+                                scrollState.animateScrollTo(targetScroll)
+                            }
+                        }
+
                         BasicTextField(
                             value = contentValue,
                             onValueChange = viewModel::updateContentValue,

@@ -131,7 +131,11 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
             val localPath = copyUriToInternalStorage(app, uri, fileName)
             if (localPath != null) {
                 withContext(Dispatchers.Main) {
-                    insertInlineMarker(buildInlineFileMarker(localPath, fileName), ContentType.FILE)
+                    insertInlineMarker(
+                        marker = buildInlineFileMarker(localPath, fileName),
+                        type = ContentType.FILE,
+                        addCursorSpaceAfterMarker = true
+                    )
                 }
             }
         }
@@ -208,7 +212,10 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
         }
         
         if (newText != currentText) {
-            _contentValue.value = _contentValue.value.copy(text = newText)
+            _contentValue.value = TextFieldValue(
+                text = newText,
+                selection = _contentValue.value.selection
+            )
         }
     }
 
@@ -358,7 +365,7 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
         val prefix = "${previousLine.take(checkboxIndex)}☐ "
         val updatedText = value.text.replaceRange(cursor, cursor, prefix)
         val updatedCursor = cursor + prefix.length
-        return value.copy(
+        return TextFieldValue(
             text = updatedText,
             selection = TextRange(updatedCursor)
         )

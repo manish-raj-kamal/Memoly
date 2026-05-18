@@ -1,6 +1,7 @@
 package com.memoly.dock.ui.editor
 
 import android.app.Application
+import android.net.Uri
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.lifecycle.AndroidViewModel
@@ -10,13 +11,22 @@ import com.memoly.dock.data.model.MemoryItem
 import com.memoly.dock.data.repository.MemoryRepository
 import com.memoly.dock.domain.model.ContentType
 import com.memoly.dock.domain.usecase.ReminderParser
+import com.memoly.dock.utils.InlineAttachmentType
+import com.memoly.dock.utils.buildInlineFileMarker
+import com.memoly.dock.utils.buildInlineImageMarker
+import com.memoly.dock.utils.containsInlineAttachment
+import com.memoly.dock.utils.copyUriToInternalStorage
+import com.memoly.dock.utils.getDisplayName
+import com.memoly.dock.utils.parseInlineAttachment
 import com.memoly.dock.utils.containsUrl
 import com.memoly.dock.utils.isUrl
 import com.memoly.dock.workers.ReminderWorker
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * ViewModel for the note editor screen.
@@ -69,15 +79,19 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
 
         var finalValue = value
 
+        removeTouchedInlineAttachment(oldText, newText)?.let { removedValue ->
+            finalValue = removedValue
+        }
+
         // Handle list mode auto-continuation on Enter
         if (_isListMode.value && newText.length > oldText.length && newText.endsWith("\n")) {
-            val lines = newText.split("\n")
+            val lines = finalValue.text.split("\n")
             // Check the line that was just finished (second to last)
             val lastLine = lines.getOrNull(lines.size - 2) ?: ""
             if (lastLine.trim().startsWith("☐") || lastLine.trim().startsWith("☑")) {
                 val prefix = "☐ "
-                val updatedText = newText + prefix
-                finalValue = value.copy(
+                val updatedText = finalValue.text + prefix
+                finalValue = finalValue.copy(
                     text = updatedText,
                     selection = TextRange(updatedText.length)
                 )
@@ -88,6 +102,8 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
         
         // Auto-detect content type
         _contentType.value = when {
+            finalValue.text.contains("[img:") -> ContentType.IMAGE
+            finalValue.text.contains("[file:") -> ContentType.FILE
             _attachedImageUri.value != null -> ContentType.IMAGE
             finalValue.text.isUrl() || finalValue.text.containsUrl() -> ContentType.LINK
             else -> ContentType.NOTE
@@ -106,31 +122,27 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
         _isPinned.value = !_isPinned.value
     }
 
-    fun attachImage(uri: String) {
-        // For inline media, we'll append a marker to the text
-        // Format: [img:uri]
-        val marker = "\n[img:$uri]\n"
-        val currentText = _contentValue.value.text
-        val newText = if (currentText.isBlank()) marker else "$currentText$marker"
-        
-        _contentValue.value = TextFieldValue(
-            text = newText,
-            selection = TextRange(newText.length)
-        )
-        _contentType.value = ContentType.IMAGE
+    fun attachImage(uri: Uri) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val localPath = copyUriToInternalStorage(app, uri, getDisplayName(app, uri))
+            if (localPath != null) {
+                withContext(Dispatchers.Main) {
+                    insertInlineMarker(buildInlineImageMarker(localPath), ContentType.IMAGE)
+                }
+            }
+        }
     }
-    
-    fun attachFile(uri: String, fileName: String) {
-        // Format: [file:uri|name]
-        val marker = "\n[file:$uri|$fileName]\n"
-        val currentText = _contentValue.value.text
-        val newText = if (currentText.isBlank()) marker else "$currentText$marker"
-        
-        _contentValue.value = TextFieldValue(
-            text = newText,
-            selection = TextRange(newText.length)
-        )
-        _contentType.value = ContentType.FILE
+
+    fun attachFile(uri: Uri) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val fileName = getDisplayName(app, uri) ?: "Document"
+            val localPath = copyUriToInternalStorage(app, uri, fileName)
+            if (localPath != null) {
+                withContext(Dispatchers.Main) {
+                    insertInlineMarker(buildInlineFileMarker(localPath, fileName), ContentType.FILE)
+                }
+            }
+        }
     }
 
     fun removeImage() {
@@ -215,10 +227,11 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
         viewModelScope.launch {
             val item = repository.getItemByIdOnce(itemId)
             if (item != null) {
+                val inlineContent = migrateLegacyAttachmentToInline(item)
                 _editingItemId.value = item.id
                 _contentValue.value = TextFieldValue(
-                    text = item.content,
-                    selection = TextRange(item.content.length)
+                    text = inlineContent,
+                    selection = TextRange(inlineContent.length)
                 )
                 _title.value = item.title ?: ""
                 _tags.value = item.tags ?: ""
@@ -264,6 +277,7 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
                                 title = _title.value.takeIf { it.isNotBlank() },
                                 contentType = contentType,
                                 tags = _tags.value.takeIf { it.isNotBlank() },
+                                imagePath = if (contentType == ContentType.SCREENSHOT) existing.imagePath else null,
                                 isPinned = _isPinned.value,
                                 reminderTime = reminderTime ?: existing.reminderTime,
                                 isReminderDone = if (reminderTime != null) false else existing.isReminderDone,
@@ -283,7 +297,8 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
                             contentType = contentType,
                             tags = _tags.value.takeIf { it.isNotBlank() },
                             isPinned = _isPinned.value,
-                            reminderTime = reminderTime
+                            reminderTime = reminderTime,
+                            imagePath = null
                         )
                     )
 
@@ -298,6 +313,84 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
             } finally {
                 _isSaving.value = false
             }
+        }
+    }
+
+    private fun insertInlineMarker(marker: String, type: ContentType) {
+        val currentValue = _contentValue.value
+        val start = currentValue.selection.min
+        val end = currentValue.selection.max
+        val prefix = if (start > 0 && currentValue.text[start - 1] != '\n') "\n" else ""
+        val suffix = if (end < currentValue.text.length && currentValue.text[end] != '\n') "\n" else ""
+        val insertion = buildString {
+            append(prefix)
+            append(marker)
+            append(suffix)
+        }
+
+        val updatedText = currentValue.text.replaceRange(start, end, insertion)
+        val updatedSelection = start + insertion.length
+        _contentValue.value = TextFieldValue(
+            text = updatedText,
+            selection = TextRange(updatedSelection)
+        )
+        _contentType.value = type
+    }
+
+    private fun removeTouchedInlineAttachment(oldText: String, newText: String): TextFieldValue? {
+        if (!containsInlineAttachment(oldText) || oldText == newText) return null
+
+        val changeStart = firstDifferenceIndex(oldText, newText)
+        var oldEnd = oldText.length - 1
+        var newEnd = newText.length - 1
+        while (oldEnd >= changeStart && newEnd >= changeStart && oldText[oldEnd] == newText[newEnd]) {
+            oldEnd--
+            newEnd--
+        }
+
+        var lineStart = 0
+        oldText.split("\n").forEach { line ->
+            val lineEndExclusive = lineStart + line.length
+            val attachment = parseInlineAttachment(line)
+            if (attachment != null && changeStart <= lineEndExclusive && oldEnd >= lineStart) {
+                val removalEnd = if (lineEndExclusive < oldText.length) lineEndExclusive + 1 else lineEndExclusive
+                val updatedText = oldText.removeRange(lineStart, removalEnd)
+                return TextFieldValue(
+                    text = updatedText,
+                    selection = TextRange(lineStart.coerceAtMost(updatedText.length))
+                )
+            }
+            lineStart = lineEndExclusive + 1
+        }
+
+        return null
+    }
+
+    private fun firstDifferenceIndex(oldText: String, newText: String): Int {
+        val limit = minOf(oldText.length, newText.length)
+        for (index in 0 until limit) {
+            if (oldText[index] != newText[index]) {
+                return index
+            }
+        }
+        return limit
+    }
+
+    private fun migrateLegacyAttachmentToInline(item: MemoryItem): String {
+        if (containsInlineAttachment(item.content)) {
+            return item.content
+        }
+
+        val path = item.imagePath ?: return item.content
+        return when (item.contentType) {
+            ContentType.IMAGE -> buildInlineImageMarker(path)
+            ContentType.FILE -> {
+                val fileName = item.content.takeIf { it.isNotBlank() }
+                    ?: path.substringAfterLast('/')
+                buildInlineFileMarker(path, fileName)
+            }
+
+            else -> item.content
         }
     }
 }

@@ -4,6 +4,8 @@ package com.memoly.dock.ui.detail
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.animation.*
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -21,6 +23,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.style.TextDecoration
@@ -31,6 +35,11 @@ import coil.compose.AsyncImage
 import com.memoly.dock.domain.model.ContentType
 import com.memoly.dock.ui.components.*
 import com.memoly.dock.ui.theme.*
+import com.memoly.dock.utils.InlineAttachmentType
+import com.memoly.dock.utils.extractFirstInlineImageUri
+import com.memoly.dock.utils.openStoredAttachment
+import com.memoly.dock.utils.parseInlineAttachment
+import com.memoly.dock.utils.textWithoutInlineAttachments
 import com.memoly.dock.utils.*
 
 /**
@@ -51,6 +60,7 @@ fun DetailScreen(
 
     var showDeleteDialog by remember { mutableStateOf(false) }
     var showCancelReminderDialog by remember { mutableStateOf(false) }
+    var previewImageUri by remember { mutableStateOf<String?>(null) }
 
     // Custom Date/Time Picker State
     var showDatePicker by remember { mutableStateOf(false) }
@@ -134,6 +144,35 @@ fun DetailScreen(
 
     LaunchedEffect(deleted) {
         if (deleted) onNavigateBack()
+    }
+
+    previewImageUri?.let { uri ->
+        Dialog(
+            onDismissRequest = { previewImageUri = null },
+            properties = DialogProperties(usePlatformDefaultWidth = false)
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(androidx.compose.ui.graphics.Color.Black),
+                contentAlignment = Alignment.Center
+            ) {
+                AsyncImage(
+                    model = uri,
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Fit
+                )
+                IconButton(
+                    onClick = { previewImageUri = null },
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(16.dp)
+                ) {
+                    Icon(Icons.Filled.Close, contentDescription = "Close", tint = androidx.compose.ui.graphics.Color.White)
+                }
+            }
+        }
     }
 
     if (showDeleteDialog) {
@@ -356,29 +395,67 @@ fun DetailScreen(
                     Spacer(modifier = Modifier.height(12.dp))
                 }
 
-                // Image preview
-                if (memory.contentType == ContentType.SCREENSHOT || memory.contentType == ContentType.IMAGE) {
-                    memory.imagePath?.let { path ->
-                        AsyncImage(
-                            model = path,
-                            contentDescription = "Image",
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(16.dp)),
-                            contentScale = ContentScale.FillWidth
-                        )
-                        Spacer(modifier = Modifier.height(20.dp))
-                    }
+                val inlineAttachments = memory.content.lines().mapNotNull(::parseInlineAttachment)
+                val previewImage = memory.imagePath ?: extractFirstInlineImageUri(memory.content)
+                if ((memory.contentType == ContentType.SCREENSHOT || memory.contentType == ContentType.IMAGE) && previewImage != null) {
+                    AsyncImage(
+                        model = previewImage,
+                        contentDescription = "Image",
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(16.dp))
+                            .clickable { previewImageUri = previewImage },
+                        contentScale = ContentScale.FillWidth
+                    )
+                    Spacer(modifier = Modifier.height(20.dp))
                 }
 
+                inlineAttachments
+                    .filter { it.type == InlineAttachmentType.FILE }
+                    .forEach { attachment ->
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    openStoredAttachment(context, attachment.uri, "*/*")
+                                },
+                            shape = RoundedCornerShape(16.dp),
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                            )
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(16.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(Icons.Outlined.InsertDriveFile, contentDescription = null)
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Column {
+                                    Text(
+                                        attachment.fileName ?: "Document",
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                    Text(
+                                        "Tap to open",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(16.dp))
+                    }
+
                 // Content
-                val urls = memory.content.extractUrls()
+                val visibleContent = textWithoutInlineAttachments(memory.content)
+                val urls = visibleContent.extractUrls()
                 val annotatedContent = buildAnnotatedString {
                     var lastIndex = 0
                     for (url in urls) {
-                        val startIndex = memory.content.indexOf(url, lastIndex)
+                        val startIndex = visibleContent.indexOf(url, lastIndex)
                         if (startIndex != -1) {
-                            append(memory.content.substring(lastIndex, startIndex))
+                            append(visibleContent.substring(lastIndex, startIndex))
                             withStyle(
                                 style = SpanStyle(
                                     color = MaterialTheme.colorScheme.primary,
@@ -390,16 +467,18 @@ fun DetailScreen(
                             lastIndex = startIndex + url.length
                         }
                     }
-                    if (lastIndex < memory.content.length) {
-                        append(memory.content.substring(lastIndex))
+                    if (lastIndex < visibleContent.length) {
+                        append(visibleContent.substring(lastIndex))
                     }
                 }
 
-                Text(
-                    text = annotatedContent,
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
+                if (visibleContent.isNotBlank()) {
+                    Text(
+                        text = annotatedContent,
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
 
                 // Link actions
                 if (urls.isNotEmpty()) {

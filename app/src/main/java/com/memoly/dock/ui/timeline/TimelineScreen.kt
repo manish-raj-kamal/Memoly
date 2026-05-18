@@ -35,6 +35,9 @@ import com.memoly.dock.data.model.MemoryItem
 import com.memoly.dock.domain.model.ContentType
 import com.memoly.dock.ui.components.*
 import com.memoly.dock.ui.theme.*
+import com.memoly.dock.utils.extractFirstInlineImageUri
+import com.memoly.dock.utils.firstInlineFileName
+import com.memoly.dock.utils.textWithoutInlineAttachments
 import com.memoly.dock.utils.*
 
 /**
@@ -673,9 +676,10 @@ fun TimelineItemRow(
                             .background(dotColor.copy(alpha = 0.15f)),
                         contentAlignment = Alignment.Center
                     ) {
-                        if ((item.contentType == ContentType.SCREENSHOT || item.contentType == ContentType.IMAGE) && item.imagePath != null) {
+                        val previewImage = item.imagePath ?: extractFirstInlineImageUri(item.content)
+                        if ((item.contentType == ContentType.SCREENSHOT || item.contentType == ContentType.IMAGE) && previewImage != null) {
                             AsyncImage(
-                                model = item.imagePath,
+                                model = previewImage,
                                 contentDescription = "Preview",
                                 modifier = Modifier
                                     .fillMaxSize()
@@ -695,8 +699,14 @@ fun TimelineItemRow(
                     Spacer(modifier = Modifier.width(10.dp))
 
                     Column(modifier = Modifier.weight(1f)) {
-                        // Title — show title if available, otherwise first line of content
-                        val displayTitle = item.title?.takeIf { it.isNotBlank() } ?: (item.content.lines().firstOrNull() ?: item.content)
+                        val contentText = textWithoutInlineAttachments(item.content)
+                        val fallbackTitle = when {
+                            item.contentType == ContentType.FILE -> firstInlineFileName(item.content) ?: "Document"
+                            item.contentType == ContentType.IMAGE -> "Image"
+                            contentText.isNotBlank() -> contentText.lines().firstOrNull().orEmpty()
+                            else -> item.content.lines().firstOrNull() ?: item.content
+                        }
+                        val displayTitle = item.title?.takeIf { it.isNotBlank() } ?: fallbackTitle
                         Text(
                             text = displayTitle,
                             style = MaterialTheme.typography.titleSmall,
@@ -711,8 +721,8 @@ fun TimelineItemRow(
                             item.contentType == ContentType.LINK -> item.content.extractDomain() ?: "Link"
                             item.contentType == ContentType.SCREENSHOT -> item.sourceApp ?: "Screenshot"
                             item.sourceApp != null -> item.sourceApp
-                            item.content.lines().size > 1 -> item.content.lines().drop(1).joinToString(" ").take(60)
-                            else -> if (item.title?.isNotBlank() == true) item.content.take(60) else ""
+                            contentText.lines().size > 1 -> contentText.lines().drop(1).joinToString(" ").take(60)
+                            else -> if (item.title?.isNotBlank() == true) contentText.take(60) else ""
                         }
                         if (subtitle.isNotBlank()) {
                             Spacer(modifier = Modifier.height(2.dp))

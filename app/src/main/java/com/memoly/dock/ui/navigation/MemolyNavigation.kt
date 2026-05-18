@@ -88,7 +88,7 @@ fun MemolyNavigation(
         composable(MemolyRoutes.TIMELINE) {
             TimelineScreen(
                 onAddClick = { navController.navigate(MemolyRoutes.editor()) },
-                onItemClick = { id -> navController.navigate(MemolyRoutes.detail(id)) },
+                onItemClick = { id -> navController.navigate(MemolyRoutes.editor(id)) },
                 onSettingsClick = { navController.navigate(MemolyRoutes.SETTINGS) }
             )
         }
@@ -138,7 +138,7 @@ fun MemolyNavigation(
     // Handle deep link navigation (from notification tap)
     LaunchedEffect(deepLinkMemoryId) {
         deepLinkMemoryId?.let { id ->
-            navController.navigate(MemolyRoutes.detail(id)) {
+            navController.navigate(MemolyRoutes.editor(id)) {
                 launchSingleTop = true
             }
             onDeepLinkConsumed()

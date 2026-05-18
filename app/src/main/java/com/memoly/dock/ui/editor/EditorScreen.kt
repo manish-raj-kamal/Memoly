@@ -10,6 +10,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -51,6 +52,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -67,6 +69,7 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.ParagraphStyle
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextRange
@@ -77,6 +80,7 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.input.TransformedText
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -171,10 +175,11 @@ fun EditorScreen(
     val focusRequester = remember { FocusRequester() }
     val isEditing = editItemId != null
     val screenHeight = configuration.screenHeightDp.dp
-    val imagePlaceholderHeight = minOf(280.dp, screenHeight * 0.7f)
+    val maxImageHeight = screenHeight * 0.7f
+    val defaultImageHeight = minOf(320.dp, maxImageHeight)
     val filePlaceholderHeight = 88.dp
-    val imageLineHeight = with(density) { imagePlaceholderHeight.toSp() }
     val fileLineHeight = with(density) { filePlaceholderHeight.toSp() }
+    val imageRowHeights = remember { mutableStateMapOf<String, Dp>() }
 
     var showTagDialog by remember { mutableStateOf(false) }
     var showReminderPicker by remember { mutableStateOf(false) }
@@ -204,7 +209,13 @@ fun EditorScreen(
         focusRequester.requestFocus()
     }
 
-    val annotatedString = remember(contentValue.text, imageLineHeight, fileLineHeight) {
+    val annotatedString = remember(
+        contentValue.text,
+        imageRowHeights.toMap(),
+        defaultImageHeight,
+        fileLineHeight,
+        density
+    ) {
         buildAnnotatedString {
             val lines = contentValue.text.split("\n")
             lines.forEachIndexed { index, line ->
@@ -229,12 +240,16 @@ fun EditorScreen(
 
                     else -> {
                         val placeholderSize = if (attachment.type == InlineAttachmentType.IMAGE) {
-                            imageLineHeight
+                            with(density) {
+                                (imageRowHeights[attachment.uri] ?: defaultImageHeight).toSp()
+                            }
                         } else {
                             fileLineHeight
                         }
-                        withStyle(SpanStyle(fontSize = placeholderSize, color = Color.Transparent)) {
-                            append("\uFFFC")
+                        withStyle(ParagraphStyle(lineHeight = placeholderSize)) {
+                            withStyle(SpanStyle(fontSize = placeholderSize, color = Color.Transparent)) {
+                                append("\uFFFC")
+                            }
                         }
                     }
                 }
@@ -395,7 +410,9 @@ fun EditorScreen(
                     Spacer(modifier = Modifier.height(8.dp))
 
                     val scrollState = rememberScrollState()
-                    Box(modifier = Modifier.weight(1f).verticalScroll(scrollState)) {
+                    BoxWithConstraints(modifier = Modifier.weight(1f).verticalScroll(scrollState)) {
+                        val editorWidth = maxWidth
+
                         if (contentValue.text.isEmpty()) {
                             Text(
                                 "Start writing...",
@@ -463,7 +480,23 @@ fun EditorScreen(
                                                     model = attachment.uri,
                                                     contentDescription = null,
                                                     modifier = Modifier.fillMaxSize(),
-                                                    contentScale = ContentScale.Fit
+                                                    contentScale = ContentScale.Fit,
+                                                    onSuccess = { state ->
+                                                        val drawable = state.result.drawable
+                                                        val width = drawable.intrinsicWidth
+                                                        val height = drawable.intrinsicHeight
+                                                        if (width > 0 && height > 0) {
+                                                            val measuredHeight = calculateInlineImageHeight(
+                                                                availableWidth = editorWidth,
+                                                                intrinsicWidth = width,
+                                                                intrinsicHeight = height,
+                                                                maxHeight = maxImageHeight
+                                                            )
+                                                            if (imageRowHeights[attachment.uri] != measuredHeight) {
+                                                                imageRowHeights[attachment.uri] = measuredHeight
+                                                            }
+                                                        }
+                                                    }
                                                 )
                                             }
                                         }
@@ -509,6 +542,32 @@ fun EditorScreen(
                                                 }
                                             }
                                         }
+                                    }
+                                } else {
+                                    val checkboxIndex = line.indexOfFirst { it == '☐' || it == '☑' }
+                                    if (checkboxIndex >= 0 && line.take(checkboxIndex).isBlank()) {
+                                        val checkboxOffset = currentOriginalOffset + checkboxIndex
+                                        val transformedOffset = offsetMapping.originalToTransformed(checkboxOffset)
+                                        val lineIndex = layout.getLineForOffset(
+                                            transformedOffset.coerceAtMost(maxOf(annotatedString.length - 1, 0))
+                                        )
+                                        val top = with(density) { layout.getLineTop(lineIndex).toDp() }
+                                        val height = with(density) {
+                                            (layout.getLineBottom(lineIndex) - layout.getLineTop(lineIndex)).toDp()
+                                        }
+                                        val left = with(density) {
+                                            layout.getHorizontalPosition(transformedOffset, true).toDp()
+                                        }
+
+                                        Box(
+                                            modifier = Modifier
+                                                .offset(x = left - 10.dp, y = top)
+                                                .width(48.dp)
+                                                .height(height)
+                                                .clickable {
+                                                    viewModel.toggleCheckboxAt(checkboxOffset)
+                                                }
+                                        )
                                     }
                                 }
                                 currentOriginalOffset += line.length + 1
@@ -566,4 +625,14 @@ private fun FullscreenImageDialog(
             }
         }
     }
+}
+
+private fun calculateInlineImageHeight(
+    availableWidth: Dp,
+    intrinsicWidth: Int,
+    intrinsicHeight: Int,
+    maxHeight: Dp
+): Dp {
+    val widthFitHeight = availableWidth * (intrinsicHeight.toFloat() / intrinsicWidth.toFloat())
+    return widthFitHeight.coerceAtMost(maxHeight)
 }

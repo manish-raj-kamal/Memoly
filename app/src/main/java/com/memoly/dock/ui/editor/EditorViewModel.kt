@@ -11,7 +11,6 @@ import com.memoly.dock.data.model.MemoryItem
 import com.memoly.dock.data.repository.MemoryRepository
 import com.memoly.dock.domain.model.ContentType
 import com.memoly.dock.domain.usecase.ReminderParser
-import com.memoly.dock.utils.InlineAttachmentType
 import com.memoly.dock.utils.buildInlineFileMarker
 import com.memoly.dock.utils.buildInlineImageMarker
 import com.memoly.dock.utils.containsInlineAttachment
@@ -329,7 +328,7 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
         }
 
         val updatedText = currentValue.text.replaceRange(start, end, insertion)
-        val updatedSelection = start + insertion.length
+        val updatedSelection = start + prefix.length + marker.length
         _contentValue.value = TextFieldValue(
             text = updatedText,
             selection = TextRange(updatedSelection)

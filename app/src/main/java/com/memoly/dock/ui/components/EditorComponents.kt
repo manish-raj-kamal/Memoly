@@ -101,25 +101,25 @@ fun EditorToolbar(
     Surface(
         modifier = modifier
             .fillMaxWidth()
-            .height(56.dp),
+            .height(52.dp),
         color = Color(0xFFFFF9C4).copy(alpha = 0.6f), // Light cream/yellow background
         tonalElevation = 0.dp
     ) {
         Row(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 12.dp),
+                .padding(horizontal = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = onFileClick) {
+                IconButton(onClick = onFileClick, modifier = Modifier.size(40.dp)) {
                     Icon(Icons.Outlined.AddCircleOutline, contentDescription = "Add File", tint = Color.Black)
                 }
-                IconButton(onClick = onImageClick) {
+                IconButton(onClick = onImageClick, modifier = Modifier.size(40.dp)) {
                     Icon(Icons.Outlined.Image, contentDescription = "Add Image", tint = Color.Black)
                 }
-                IconButton(onClick = onTagClick) {
+                IconButton(onClick = onTagClick, modifier = Modifier.size(40.dp)) {
                     Icon(Icons.Outlined.Tag, contentDescription = "Tags", tint = Color.Black)
                 }
                 IconButton(
@@ -127,7 +127,7 @@ fun EditorToolbar(
                     modifier = Modifier.background(
                         if (isListMode) Color.Black.copy(alpha = 0.1f) else Color.Transparent,
                         RoundedCornerShape(8.dp)
-                    )
+                    ).size(40.dp)
                 ) {
                     Icon(
                         imageVector = if (isListMode) Icons.Filled.CheckBox else Icons.Outlined.CheckBoxOutlineBlank,
@@ -145,7 +145,7 @@ fun EditorToolbar(
                 tonalElevation = 2.dp
             ) {
                 Row(
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {

@@ -82,19 +82,8 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
             finalValue = removedValue
         }
 
-        // Handle list mode auto-continuation on Enter
-        if (_isListMode.value && newText.length > oldText.length && newText.endsWith("\n")) {
-            val lines = finalValue.text.split("\n")
-            // Check the line that was just finished (second to last)
-            val lastLine = lines.getOrNull(lines.size - 2) ?: ""
-            if (lastLine.trim().startsWith("☐") || lastLine.trim().startsWith("☑")) {
-                val prefix = "☐ "
-                val updatedText = finalValue.text + prefix
-                finalValue = finalValue.copy(
-                    text = updatedText,
-                    selection = TextRange(updatedText.length)
-                )
-            }
+        continueListAfterEnter(finalValue)?.let { continuedValue ->
+            finalValue = continuedValue
         }
 
         _contentValue.value = finalValue
@@ -126,7 +115,11 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
             val localPath = copyUriToInternalStorage(app, uri, getDisplayName(app, uri))
             if (localPath != null) {
                 withContext(Dispatchers.Main) {
-                    insertInlineMarker(buildInlineImageMarker(localPath), ContentType.IMAGE)
+                    insertInlineMarker(
+                        marker = buildInlineImageMarker(localPath),
+                        type = ContentType.IMAGE,
+                        addCursorSpaceAfterMarker = true
+                    )
                 }
             }
         }
@@ -315,12 +308,20 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    private fun insertInlineMarker(marker: String, type: ContentType) {
+    private fun insertInlineMarker(
+        marker: String,
+        type: ContentType,
+        addCursorSpaceAfterMarker: Boolean = false
+    ) {
         val currentValue = _contentValue.value
         val start = currentValue.selection.min
         val end = currentValue.selection.max
         val prefix = if (start > 0 && currentValue.text[start - 1] != '\n') "\n" else ""
-        val suffix = if (end < currentValue.text.length && currentValue.text[end] != '\n') "\n" else ""
+        val suffix = when {
+            addCursorSpaceAfterMarker -> "\n "
+            end < currentValue.text.length && currentValue.text[end] != '\n' -> "\n"
+            else -> ""
+        }
         val insertion = buildString {
             append(prefix)
             append(marker)
@@ -328,12 +329,39 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
         }
 
         val updatedText = currentValue.text.replaceRange(start, end, insertion)
-        val updatedSelection = start + prefix.length + marker.length
+        val updatedSelection = start + prefix.length + marker.length + suffix.length
         _contentValue.value = TextFieldValue(
             text = updatedText,
             selection = TextRange(updatedSelection)
         )
         _contentType.value = type
+    }
+
+    private fun continueListAfterEnter(value: TextFieldValue): TextFieldValue? {
+        if (!_isListMode.value || value.selection.min != value.selection.max) return null
+
+        val cursor = value.selection.start
+        val insertedNewlineIndex = cursor - 1
+        if (insertedNewlineIndex !in value.text.indices || value.text[insertedNewlineIndex] != '\n') {
+            return null
+        }
+
+        val previousLineStart = value.text.lastIndexOf('\n', insertedNewlineIndex - 1).let { index ->
+            if (index == -1) 0 else index + 1
+        }
+        val previousLine = value.text.substring(previousLineStart, insertedNewlineIndex)
+        val checkboxIndex = previousLine.indexOfFirst { it == '☐' || it == '☑' }
+        if (checkboxIndex == -1 || previousLine.take(checkboxIndex).isNotBlank()) {
+            return null
+        }
+
+        val prefix = "${previousLine.take(checkboxIndex)}☐ "
+        val updatedText = value.text.replaceRange(cursor, cursor, prefix)
+        val updatedCursor = cursor + prefix.length
+        return value.copy(
+            text = updatedText,
+            selection = TextRange(updatedCursor)
+        )
     }
 
     private fun removeTouchedInlineAttachment(oldText: String, newText: String): TextFieldValue? {

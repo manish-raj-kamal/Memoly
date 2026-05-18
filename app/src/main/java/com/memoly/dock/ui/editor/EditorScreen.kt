@@ -221,17 +221,25 @@ fun EditorScreen(
             lines.forEachIndexed { index, line ->
                 when (val attachment = parseInlineAttachment(line)) {
                     null -> {
-                        if (line.trim().startsWith("☑")) {
+                        val checkboxIndex = line.indexOfFirst { it == '☐' || it == '☑' }
+                        val isListItem = checkboxIndex >= 0 && line.take(checkboxIndex).isBlank()
+                        if (isListItem) {
+                            append(line.take(checkboxIndex))
                             withStyle(SpanStyle(color = Color(0xFFFFC107))) {
-                                append("☑")
+                                append(line[checkboxIndex])
                             }
-                            withStyle(
-                                SpanStyle(
-                                    textDecoration = TextDecoration.LineThrough,
-                                    color = Color.Gray
-                                )
-                            ) {
-                                append(line.replaceFirst("☑", ""))
+                            val textAfterCheckbox = line.substring(checkboxIndex + 1)
+                            if (line[checkboxIndex] == '☑') {
+                                withStyle(
+                                    SpanStyle(
+                                        textDecoration = TextDecoration.LineThrough,
+                                        color = Color.Gray
+                                    )
+                                ) {
+                                    append(textAfterCheckbox)
+                                }
+                            } else {
+                                append(textAfterCheckbox)
                             }
                         } else {
                             append(line)

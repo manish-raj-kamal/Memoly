@@ -32,6 +32,8 @@ import androidx.compose.ui.text.withStyle
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
+import coil.request.ImageRequest
+import coil.size.Size
 import com.memoly.dock.domain.model.ContentType
 import com.memoly.dock.ui.components.*
 import com.memoly.dock.ui.theme.*
@@ -60,7 +62,6 @@ fun DetailScreen(
 
     var showDeleteDialog by remember { mutableStateOf(false) }
     var showCancelReminderDialog by remember { mutableStateOf(false) }
-    var previewImageUri by remember { mutableStateOf<String?>(null) }
 
     // Custom Date/Time Picker State
     var showDatePicker by remember { mutableStateOf(false) }
@@ -144,35 +145,6 @@ fun DetailScreen(
 
     LaunchedEffect(deleted) {
         if (deleted) onNavigateBack()
-    }
-
-    previewImageUri?.let { uri ->
-        Dialog(
-            onDismissRequest = { previewImageUri = null },
-            properties = DialogProperties(usePlatformDefaultWidth = false)
-        ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(androidx.compose.ui.graphics.Color.Black),
-                contentAlignment = Alignment.Center
-            ) {
-                AsyncImage(
-                    model = uri,
-                    contentDescription = null,
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Fit
-                )
-                IconButton(
-                    onClick = { previewImageUri = null },
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(16.dp)
-                ) {
-                    Icon(Icons.Filled.Close, contentDescription = "Close", tint = androidx.compose.ui.graphics.Color.White)
-                }
-            }
-        }
     }
 
     if (showDeleteDialog) {
@@ -399,12 +371,18 @@ fun DetailScreen(
                 val previewImage = memory.imagePath ?: extractFirstInlineImageUri(memory.content)
                 if ((memory.contentType == ContentType.SCREENSHOT || memory.contentType == ContentType.IMAGE) && previewImage != null) {
                     AsyncImage(
-                        model = previewImage,
+                        model = ImageRequest.Builder(context)
+                            .data(previewImage)
+                            .size(Size.ORIGINAL)
+                            .crossfade(true)
+                            .build(),
                         contentDescription = "Image",
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(16.dp))
-                            .clickable { previewImageUri = previewImage },
+                            .clickable {
+                                openStoredAttachment(context, previewImage, "image/*")
+                            },
                         contentScale = ContentScale.FillWidth
                     )
                     Spacer(modifier = Modifier.height(20.dp))

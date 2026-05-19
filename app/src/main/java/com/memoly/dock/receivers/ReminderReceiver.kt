@@ -10,6 +10,10 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import com.memoly.dock.MainActivity
 import com.memoly.dock.R
+import com.memoly.dock.utils.reminderNotificationText
+import com.memoly.dock.workers.ReminderWorker
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
 /**
@@ -22,6 +26,7 @@ class ReminderReceiver : BroadcastReceiver() {
         const val EXTRA_CONTENT = "content"
         const val ACTION_MARK_DONE = "com.memoly.dock.action.MARK_DONE"
         const val ACTION_RESCHEDULE = "com.memoly.dock.action.RESCHEDULE"
+        private const val SNOOZE_DELAY_MILLIS = 60 * 60 * 1000L
     }
 
     override fun onReceive(context: Context, intent: Intent) {
@@ -30,10 +35,11 @@ class ReminderReceiver : BroadcastReceiver() {
 
         if (intent.action == ACTION_MARK_DONE) {
             val pendingResult = goAsync()
-            kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+            CoroutineScope(Dispatchers.IO).launch {
                 try {
                     val db = com.memoly.dock.data.local.MemolyDatabase.getDatabase(context)
                     db.memoryItemDao().markReminderDone(memoryId)
+                    ReminderWorker.cancel(context, memoryId)
                     NotificationManagerCompat.from(context).cancel(memoryId.toInt())
                 } finally {
                     pendingResult.finish()
@@ -43,13 +49,25 @@ class ReminderReceiver : BroadcastReceiver() {
         }
 
         if (intent.action == ACTION_RESCHEDULE) {
-            val openIntent = Intent(context, MainActivity::class.java).apply {
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-                putExtra("memory_id", memoryId)
-                putExtra("open_reschedule", true)
+            val pendingResult = goAsync()
+            CoroutineScope(Dispatchers.IO).launch {
+                try {
+                    val db = com.memoly.dock.data.local.MemolyDatabase.getDatabase(context)
+                    val item = db.memoryItemDao().getItemByIdOnce(memoryId) ?: return@launch
+                    val newReminderTime = System.currentTimeMillis() + SNOOZE_DELAY_MILLIS
+                    db.memoryItemDao().update(
+                        item.copy(
+                            reminderTime = newReminderTime,
+                            isReminderDone = false,
+                            lastModifiedAt = System.currentTimeMillis()
+                        )
+                    )
+                    ReminderWorker.schedule(context, item.id, item.content, newReminderTime)
+                    NotificationManagerCompat.from(context).cancel(memoryId.toInt())
+                } finally {
+                    pendingResult.finish()
+                }
             }
-            context.startActivity(openIntent)
-            NotificationManagerCompat.from(context).cancel(memoryId.toInt())
             return
         }
 
@@ -103,8 +121,8 @@ class ReminderReceiver : BroadcastReceiver() {
         val notification = NotificationCompat.Builder(context, channelId)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle("Memoly Reminder")
-            .setContentText(content.take(200))
-            .setStyle(NotificationCompat.BigTextStyle().bigText(content))
+            .setContentText(reminderNotificationText(content))
+            .setStyle(NotificationCompat.BigTextStyle().bigText(reminderNotificationText(content)))
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setAutoCancel(true)
             .setContentIntent(pendingIntent)

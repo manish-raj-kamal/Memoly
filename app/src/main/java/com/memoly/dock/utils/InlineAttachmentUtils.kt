@@ -75,6 +75,32 @@ fun textWithoutInlineAttachments(text: String): String {
         .trim()
 }
 
+fun reminderNotificationText(text: String): String {
+    val visibleText = textWithoutInlineAttachments(text)
+    if (visibleText.isNotBlank()) {
+        return visibleText.lineSequence()
+            .map { it.trim() }
+            .firstOrNull { it.isNotBlank() }
+            ?.take(200)
+            ?: visibleText.take(200)
+    }
+
+    val attachments = text.lineSequence().mapNotNull(::parseInlineAttachment).toList()
+    if (attachments.isEmpty()) {
+        return "You have a reminder"
+    }
+
+    if (attachments.size > 1) {
+        return "${attachments.size} attachments"
+    }
+
+    val attachment = attachments.first()
+    return when (attachment.type) {
+        InlineAttachmentType.IMAGE -> "Image attachment"
+        InlineAttachmentType.FILE -> attachment.fileName?.takeIf { it.isNotBlank() } ?: "Document attachment"
+    }
+}
+
 fun getDisplayName(context: Context, uri: Uri): String? {
     var result: String? = null
     if (uri.scheme == "content") {

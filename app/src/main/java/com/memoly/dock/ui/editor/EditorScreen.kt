@@ -88,6 +88,8 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
+import coil.request.ImageRequest
+import coil.size.Size
 import com.memoly.dock.domain.model.ContentType
 import com.memoly.dock.ui.components.ContentTypeChip
 import com.memoly.dock.ui.components.EditorToolbar
@@ -183,7 +185,6 @@ fun EditorScreen(
 
     var showTagDialog by remember { mutableStateOf(false) }
     var showReminderPicker by remember { mutableStateOf(false) }
-    var previewImageUri by remember { mutableStateOf<String?>(null) }
 
     val imagePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia()
@@ -270,9 +271,7 @@ fun EditorScreen(
         MediaOffsetMapping(contentValue.text, annotatedString)
     }
 
-    previewImageUri?.let { uri ->
-        FullscreenImageDialog(uri = uri, onDismiss = { previewImageUri = null })
-    }
+
 
     if (showTagDialog) {
         var tempTags by remember { mutableStateOf(tags ?: "") }
@@ -433,6 +432,7 @@ fun EditorScreen(
 
                         LaunchedEffect(contentValue.selection.start, textLayoutResult) {
                             val layout = textLayoutResult ?: return@LaunchedEffect
+                            if (layout.layoutInput.text.text != annotatedString.text) return@LaunchedEffect
                             if (annotatedString.isEmpty()) return@LaunchedEffect
                             focusRequester.requestFocus()
 
@@ -460,6 +460,7 @@ fun EditorScreen(
                                 .pointerInput(offsetMapping) {
                                     detectTapGestures { offset ->
                                         textLayoutResult?.let { layout ->
+                                            if (layout.layoutInput.text.text != annotatedString.text) return@let
                                             val transformedOffset = layout.getOffsetForPosition(offset)
                                             val originalOffset = offsetMapping.transformedToOriginal(transformedOffset)
                                             viewModel.toggleCheckboxAt(originalOffset)
@@ -478,6 +479,7 @@ fun EditorScreen(
                         )
 
                         textLayoutResult?.let { layout ->
+                            if (layout.layoutInput.text.text != annotatedString.text) return@let
                             val lines = contentValue.text.split("\n")
                             var currentOriginalOffset = 0
 
@@ -501,10 +503,16 @@ fun EditorScreen(
                                                     .height(height)
                                                     .clip(RoundedCornerShape(16.dp))
                                                     .background(Color.Black.copy(alpha = 0.05f))
-                                                    .clickable { previewImageUri = attachment.uri }
+                                                    .clickable {
+                                                        openStoredAttachment(context, attachment.uri, "image/*")
+                                                    }
                                             ) {
                                                 AsyncImage(
-                                                    model = attachment.uri,
+                                                    model = ImageRequest.Builder(context)
+                                                        .data(attachment.uri)
+                                                        .size(Size.ORIGINAL)
+                                                        .crossfade(true)
+                                                        .build(),
                                                     contentDescription = null,
                                                     modifier = Modifier.fillMaxSize(),
                                                     contentScale = ContentScale.Fit,
@@ -620,39 +628,7 @@ fun EditorScreen(
     }
 }
 
-@Composable
-private fun FullscreenImageDialog(
-    uri: String,
-    onDismiss: () -> Unit
-) {
-    Dialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false)
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Color.Black),
-            contentAlignment = Alignment.Center
-        ) {
-            AsyncImage(
-                model = uri,
-                contentDescription = null,
-                modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Fit
-            )
-            IconButton(
-                onClick = onDismiss,
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(16.dp)
-                    .background(Color.Black.copy(alpha = 0.45f), CircleShape)
-            ) {
-                Icon(Icons.Filled.Close, contentDescription = "Close", tint = Color.White)
-            }
-        }
-    }
-}
+
 
 private fun calculateInlineImageHeight(
     availableWidth: Dp,

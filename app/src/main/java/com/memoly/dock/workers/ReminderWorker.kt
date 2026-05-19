@@ -7,6 +7,7 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Color
 import android.media.AudioAttributes
 import android.media.RingtoneManager
 import android.os.Build
@@ -16,7 +17,8 @@ import androidx.core.content.ContextCompat
 import androidx.work.*
 import com.memoly.dock.MainActivity
 import com.memoly.dock.R
-import com.memoly.dock.data.local.MemolyDatabase
+import com.memoly.dock.receivers.ReminderReceiver
+import com.memoly.dock.utils.reminderNotificationText
 import java.util.concurrent.TimeUnit
 
 /**
@@ -85,6 +87,7 @@ class ReminderWorker(
 
             val request = OneTimeWorkRequestBuilder<ReminderWorker>()
                 .setInputData(data)
+                .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
                 .addTag("reminder_$memoryId")
                 .build()
 
@@ -109,6 +112,8 @@ class ReminderWorker(
          * Configured with HIGH importance, sound, and vibration.
          */
         fun createNotificationChannel(context: Context) {
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+
             val soundUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
 
             val channel = NotificationChannel(
@@ -127,13 +132,22 @@ class ReminderWorker(
                         .build()
                 )
                 enableLights(true)
-                lightColor = 0xFF6C63FF.toInt() // Memoly primary color
+                lightColor = Color.parseColor("#6C63FF")
                 setBypassDnd(false)
             }
 
             val manager = context.getSystemService(NotificationManager::class.java)
             manager.createNotificationChannel(channel)
         }
+    }
+
+    override suspend fun getForegroundInfo(): ForegroundInfo {
+        val notification = NotificationCompat.Builder(applicationContext, CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setContentTitle("⏰ Reminder Active")
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .build()
+        return ForegroundInfo(1001, notification)
     }
 
     override suspend fun doWork(): Result {
@@ -146,9 +160,11 @@ class ReminderWorker(
         return Result.success()
     }
 
+
     private fun showNotification(memoryId: Long, content: String) {
         // Ensure channel exists
         createNotificationChannel(applicationContext)
+        val notificationText = reminderNotificationText(content)
 
         // Intent to open the memory item in the app
         val intent = Intent(applicationContext, MainActivity::class.java).apply {
@@ -163,17 +179,41 @@ class ReminderWorker(
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
+        val markDoneIntent = Intent(applicationContext, ReminderReceiver::class.java).apply {
+            action = ReminderReceiver.ACTION_MARK_DONE
+            putExtra(ReminderReceiver.EXTRA_MEMORY_ID, memoryId)
+        }
+        val markDonePendingIntent = PendingIntent.getBroadcast(
+            applicationContext,
+            memoryId.toInt(),
+            markDoneIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val rescheduleIntent = Intent(applicationContext, ReminderReceiver::class.java).apply {
+            action = ReminderReceiver.ACTION_RESCHEDULE
+            putExtra(ReminderReceiver.EXTRA_MEMORY_ID, memoryId)
+        }
+        val reschedulePendingIntent = PendingIntent.getBroadcast(
+            applicationContext,
+            memoryId.toInt() + 10_000,
+            rescheduleIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
         val soundUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
 
         val notification = NotificationCompat.Builder(applicationContext, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle("⏰ Memoly Reminder")
-            .setContentText(content.take(200))
-            .setStyle(NotificationCompat.BigTextStyle().bigText(content))
+            .setContentText(notificationText)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(notificationText))
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setCategory(NotificationCompat.CATEGORY_REMINDER)
             .setAutoCancel(true)
             .setContentIntent(pendingIntent)
+            .addAction(0, "Reschedule", reschedulePendingIntent)
+            .addAction(0, "Mark Done", markDonePendingIntent)
             .setSound(soundUri)
             .setVibrate(longArrayOf(0, 300, 200, 300))
             .setDefaults(NotificationCompat.DEFAULT_LIGHTS)

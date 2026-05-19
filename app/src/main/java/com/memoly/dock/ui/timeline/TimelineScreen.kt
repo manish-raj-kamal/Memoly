@@ -24,6 +24,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -31,6 +32,8 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
+import coil.request.ImageRequest
+import coil.size.Size
 import com.memoly.dock.data.model.MemoryItem
 import com.memoly.dock.domain.model.ContentType
 import com.memoly.dock.ui.components.*
@@ -679,7 +682,10 @@ fun TimelineItemRow(
                         val previewImage = item.imagePath ?: extractFirstInlineImageUri(item.content)
                         if ((item.contentType == ContentType.SCREENSHOT || item.contentType == ContentType.IMAGE) && previewImage != null) {
                             AsyncImage(
-                                model = previewImage,
+                                model = ImageRequest.Builder(LocalContext.current)
+                                    .data(previewImage)
+                                    .crossfade(true)
+                                    .build(),
                                 contentDescription = "Preview",
                                 modifier = Modifier
                                     .fillMaxSize()

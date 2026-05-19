@@ -208,14 +208,27 @@ fun ReminderTimePicker(
             onDismissRequest = { showTimePicker = false },
             confirmButton = {
                 TextButton(onClick = {
-                    val date = selectedDateMillis?.let { Date(it) } ?: Date()
-                    val calendar = Calendar.getInstance().apply {
-                        time = date
-                        set(Calendar.HOUR_OF_DAY, timePickerState.hour)
-                        set(Calendar.MINUTE, timePickerState.minute)
+                    val calendar = Calendar.getInstance()
+                    
+                    // Correctly handle UTC millis from DatePickerState to local Calendar
+                    selectedDateMillis?.let { utcMillis ->
+                        val utcCalendar = Calendar.getInstance(TimeZone.getTimeZone("UTC")).apply {
+                            timeInMillis = utcMillis
+                        }
+                        calendar.set(
+                            utcCalendar.get(Calendar.YEAR),
+                            utcCalendar.get(Calendar.MONTH),
+                            utcCalendar.get(Calendar.DAY_OF_MONTH)
+                        )
                     }
                     
-                    val sdf = SimpleDateFormat("d MMM h:mm a", Locale.getDefault())
+                    calendar.set(Calendar.HOUR_OF_DAY, timePickerState.hour)
+                    calendar.set(Calendar.MINUTE, timePickerState.minute)
+                    calendar.set(Calendar.SECOND, 0)
+                    calendar.set(Calendar.MILLISECOND, 0)
+                    
+                    // Use Locale.US to ensure month names match ReminderParser's English-only support
+                    val sdf = SimpleDateFormat("d MMM h:mm a", Locale.US)
                     onTimeSelected(sdf.format(calendar.time))
                     showTimePicker = false
                 }) { Text("Set") }
@@ -258,7 +271,8 @@ fun ReminderTimePicker(
                 val tomorrow = Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, 1) }
                 val nextWeek = Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, 7) }
                 
-                val dateFormat = SimpleDateFormat("d MMM", Locale.getDefault())
+                // Use Locale.US for internal commands
+                val dateFormat = SimpleDateFormat("d MMM", Locale.US)
                 
                 val presets = listOf(
                     "15 mins" to "in 15 minutes",

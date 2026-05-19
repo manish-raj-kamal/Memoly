@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.memoly.dock.data.local.MemolyDatabase
 import com.memoly.dock.data.model.MemoryItem
 import com.memoly.dock.data.repository.MemoryRepository
+import com.memoly.dock.workers.ReminderWorker
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 
@@ -52,7 +53,14 @@ class DetailViewModel(application: Application) : AndroidViewModel(application) 
     fun cancelReminder() {
         val item = _memoryItem.value ?: return
         viewModelScope.launch {
-            repository.updateReminderTime(item.id, null)
+            repository.update(
+                item.copy(
+                    reminderTime = null,
+                    isReminderDone = false,
+                    lastModifiedAt = System.currentTimeMillis()
+                )
+            )
+            ReminderWorker.cancel(getApplication(), item.id)
         }
     }
 
@@ -60,19 +68,32 @@ class DetailViewModel(application: Application) : AndroidViewModel(application) 
         val item = _memoryItem.value ?: return
         viewModelScope.launch {
             repository.markReminderDone(item.id)
+            ReminderWorker.cancel(getApplication(), item.id)
         }
     }
 
     fun rescheduleReminder(timeMillis: Long) {
         val item = _memoryItem.value ?: return
         viewModelScope.launch {
-            repository.updateReminderTime(item.id, timeMillis)
+            val updatedItem = item.copy(
+                reminderTime = timeMillis,
+                isReminderDone = false,
+                lastModifiedAt = System.currentTimeMillis()
+            )
+            repository.update(updatedItem)
+            ReminderWorker.schedule(
+                context = getApplication(),
+                memoryId = item.id,
+                content = item.content,
+                triggerAtMillis = timeMillis
+            )
         }
     }
 
     fun deleteItem() {
         val item = _memoryItem.value ?: return
         viewModelScope.launch {
+            ReminderWorker.cancel(getApplication(), item.id)
             repository.delete(item)
             _deleted.value = true
         }

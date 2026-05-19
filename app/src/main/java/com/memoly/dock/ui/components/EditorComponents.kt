@@ -18,6 +18,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.memoly.dock.domain.usecase.ReminderParser
 import com.memoly.dock.ui.theme.*
 import java.text.SimpleDateFormat
 import java.util.*
@@ -179,6 +180,7 @@ fun ReminderTimePicker(
     var showDatePicker by remember { mutableStateOf(false) }
     var showTimePicker by remember { mutableStateOf(false) }
     var selectedDateMillis by remember { mutableStateOf<Long?>(null) }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
 
     val datePickerState = rememberDatePickerState()
     val timePickerState = rememberTimePickerState()
@@ -190,8 +192,13 @@ fun ReminderTimePicker(
             confirmButton = {
                 TextButton(onClick = {
                     selectedDateMillis = datePickerState.selectedDateMillis
-                    showDatePicker = false
-                    showTimePicker = true
+                    if (selectedDateMillis == null) {
+                        errorMessage = "Pick a date first."
+                    } else {
+                        errorMessage = null
+                        showDatePicker = false
+                        showTimePicker = true
+                    }
                 }) { Text("Next") }
             },
             dismissButton = {
@@ -209,7 +216,7 @@ fun ReminderTimePicker(
             confirmButton = {
                 TextButton(onClick = {
                     val calendar = Calendar.getInstance()
-                    
+
                     // Correctly handle UTC millis from DatePickerState to local Calendar
                     selectedDateMillis?.let { utcMillis ->
                         val utcCalendar = Calendar.getInstance(TimeZone.getTimeZone("UTC")).apply {
@@ -226,9 +233,15 @@ fun ReminderTimePicker(
                     calendar.set(Calendar.MINUTE, timePickerState.minute)
                     calendar.set(Calendar.SECOND, 0)
                     calendar.set(Calendar.MILLISECOND, 0)
-                    
+
+                    if (calendar.timeInMillis <= System.currentTimeMillis()) {
+                        errorMessage = "Reminder must be set in the future."
+                        return@TextButton
+                    }
+
                     // Use Locale.US to ensure month names match ReminderParser's English-only support
                     val sdf = SimpleDateFormat("d MMM h:mm a", Locale.US)
+                    errorMessage = null
                     onTimeSelected(sdf.format(calendar.time))
                     showTimePicker = false
                 }) { Text("Set") }
@@ -349,13 +362,29 @@ fun ReminderTimePicker(
 
                 if (customText.isNotBlank()) {
                     Button(
-                        onClick = { onTimeSelected(customText.trim()) },
+                        onClick = {
+                            val parsedTime = ReminderParser.parse("?rem ${customText.trim()}").reminderTimeMillis
+                            if (parsedTime == null || parsedTime <= System.currentTimeMillis()) {
+                                errorMessage = "Enter a future reminder time."
+                            } else {
+                                errorMessage = null
+                                onTimeSelected(customText.trim())
+                            }
+                        },
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(10.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = MemolySecondary)
                     ) {
                         Text("Set: $customText")
                     }
+                }
+
+                errorMessage?.let { message ->
+                    Text(
+                        text = message,
+                        color = MemolyError,
+                        style = MaterialTheme.typography.bodySmall
+                    )
                 }
             }
         },

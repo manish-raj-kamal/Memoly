@@ -20,6 +20,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -39,9 +40,9 @@ import com.memoly.dock.ui.components.*
 import com.memoly.dock.ui.theme.*
 import com.memoly.dock.utils.InlineAttachmentType
 import com.memoly.dock.utils.extractFirstInlineImageUri
+import com.memoly.dock.utils.extractUrls
 import com.memoly.dock.utils.openStoredAttachment
 import com.memoly.dock.utils.parseInlineAttachment
-import com.memoly.dock.utils.textWithoutInlineAttachments
 import com.memoly.dock.utils.*
 
 /**
@@ -67,6 +68,7 @@ fun DetailScreen(
     var showDatePicker by remember { mutableStateOf(false) }
     var showTimePicker by remember { mutableStateOf(false) }
     var selectedDateMillis by remember { mutableStateOf<Long?>(null) }
+    var reminderError by remember { mutableStateOf<String?>(null) }
     val datePickerState = rememberDatePickerState()
     val timePickerState = rememberTimePickerState()
 
@@ -77,8 +79,13 @@ fun DetailScreen(
             confirmButton = {
                 TextButton(onClick = {
                     selectedDateMillis = datePickerState.selectedDateMillis
-                    showDatePicker = false
-                    showTimePicker = true
+                    if (selectedDateMillis == null) {
+                        reminderError = "Pick a date first."
+                    } else {
+                        reminderError = null
+                        showDatePicker = false
+                        showTimePicker = true
+                    }
                 }) { Text("Next") }
             },
             dismissButton = {
@@ -95,12 +102,26 @@ fun DetailScreen(
             onDismissRequest = { showTimePicker = false },
             confirmButton = {
                 TextButton(onClick = {
-                    val date = selectedDateMillis?.let { java.util.Date(it) } ?: java.util.Date()
-                    val calendar = java.util.Calendar.getInstance().apply {
-                        time = date
-                        set(java.util.Calendar.HOUR_OF_DAY, timePickerState.hour)
-                        set(java.util.Calendar.MINUTE, timePickerState.minute)
+                    val calendar = java.util.Calendar.getInstance()
+                    selectedDateMillis?.let { utcMillis ->
+                        val utcCalendar = java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone("UTC")).apply {
+                            timeInMillis = utcMillis
+                        }
+                        calendar.set(
+                            utcCalendar.get(java.util.Calendar.YEAR),
+                            utcCalendar.get(java.util.Calendar.MONTH),
+                            utcCalendar.get(java.util.Calendar.DAY_OF_MONTH)
+                        )
                     }
+                    calendar.set(java.util.Calendar.HOUR_OF_DAY, timePickerState.hour)
+                    calendar.set(java.util.Calendar.MINUTE, timePickerState.minute)
+                    calendar.set(java.util.Calendar.SECOND, 0)
+                    calendar.set(java.util.Calendar.MILLISECOND, 0)
+                    if (calendar.timeInMillis <= System.currentTimeMillis()) {
+                        reminderError = "Reminder must be set in the future."
+                        return@TextButton
+                    }
+                    reminderError = null
                     viewModel.rescheduleReminder(calendar.timeInMillis)
                     showTimePicker = false
                 }) { Text("Set") }
@@ -216,6 +237,7 @@ fun DetailScreen(
         }
     ) { padding ->
         item?.let { memory ->
+            val isMissedReminder = memory.isReminderMissed()
             Column(
                 modifier = Modifier
                     .fillMaxSize()
@@ -307,18 +329,30 @@ fun DetailScreen(
                             ) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Icon(
-                                        imageVector = if (memory.isReminderDone) Icons.Outlined.CheckCircle else Icons.Outlined.Notifications,
+                                        imageVector = when {
+                                            memory.isReminderDone -> Icons.Outlined.CheckCircle
+                                            isMissedReminder -> Icons.Outlined.ErrorOutline
+                                            else -> Icons.Outlined.Notifications
+                                        },
                                         contentDescription = null,
-                                        tint = if (memory.isReminderDone) MaterialTheme.colorScheme.onSurfaceVariant else MemolySecondary,
+                                        tint = when {
+                                            memory.isReminderDone -> MaterialTheme.colorScheme.onSurfaceVariant
+                                            isMissedReminder -> MemolyError
+                                            else -> MemolySecondary
+                                        },
                                         modifier = Modifier.size(16.dp)
                                     )
                                     Spacer(modifier = Modifier.width(6.dp))
                                     Text(
-                                        text = reminderTime.toDateTimeString(),
+                                        text = if (isMissedReminder) "Missed • ${reminderTime.toDateTimeString()}" else reminderTime.toDateTimeString(),
                                         style = MaterialTheme.typography.bodySmall.copy(
                                             textDecoration = if (memory.isReminderDone) androidx.compose.ui.text.style.TextDecoration.LineThrough else null
                                         ),
-                                        color = if (memory.isReminderDone) MaterialTheme.colorScheme.onSurfaceVariant else MemolySecondary
+                                        color = when {
+                                            memory.isReminderDone -> MaterialTheme.colorScheme.onSurfaceVariant
+                                            isMissedReminder -> MemolyError
+                                            else -> MemolySecondary
+                                        }
                                     )
                                 }
                             }
@@ -348,6 +382,14 @@ fun DetailScreen(
                                     Text("Cancel", fontSize = 12.sp, color = MemolyError)
                                 }
                             }
+                            reminderError?.let { message ->
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text(
+                                    text = message,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MemolyError
+                                )
+                            }
                         }
                     }
                 }
@@ -367,127 +409,48 @@ fun DetailScreen(
                     Spacer(modifier = Modifier.height(12.dp))
                 }
 
-                val inlineAttachments = memory.content.lines().mapNotNull(::parseInlineAttachment)
-                val previewImage = memory.imagePath ?: extractFirstInlineImageUri(memory.content)
-                if ((memory.contentType == ContentType.SCREENSHOT || memory.contentType == ContentType.IMAGE) && previewImage != null) {
-                    AsyncImage(
-                        model = ImageRequest.Builder(context)
-                            .data(previewImage)
-                            .size(Size.ORIGINAL)
-                            .crossfade(true)
-                            .build(),
-                        contentDescription = "Image",
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(16.dp))
-                            .clickable {
-                                openStoredAttachment(context, previewImage, "image/*")
-                            },
-                        contentScale = ContentScale.FillWidth
+                val contentLines = memory.content.lineSequence().toList()
+                val legacyPreviewImage = memory.imagePath ?: extractFirstInlineImageUri(memory.content)
+
+                if ((memory.contentType == ContentType.SCREENSHOT || memory.contentType == ContentType.IMAGE) &&
+                    legacyPreviewImage != null && contentLines.none { parseInlineAttachment(it)?.type == InlineAttachmentType.IMAGE }
+                ) {
+                    InlineImageBlock(
+                        imageUri = legacyPreviewImage,
+                        onOpen = { openStoredAttachment(context, legacyPreviewImage, "image/*") }
                     )
-                    Spacer(modifier = Modifier.height(20.dp))
-                }
-
-                inlineAttachments
-                    .filter { it.type == InlineAttachmentType.FILE }
-                    .forEach { attachment ->
-                        Card(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable {
-                                    openStoredAttachment(context, attachment.uri, "*/*")
-                                },
-                            shape = RoundedCornerShape(16.dp),
-                            colors = CardDefaults.cardColors(
-                                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-                            )
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(16.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(Icons.Outlined.InsertDriveFile, contentDescription = null)
-                                Spacer(modifier = Modifier.width(12.dp))
-                                Column {
-                                    Text(
-                                        attachment.fileName ?: "Document",
-                                        style = MaterialTheme.typography.bodyLarge,
-                                        fontWeight = FontWeight.SemiBold
-                                    )
-                                    Text(
-                                        "Tap to open",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                            }
-                        }
-                        Spacer(modifier = Modifier.height(16.dp))
-                    }
-
-                // Content
-                val visibleContent = textWithoutInlineAttachments(memory.content)
-                val urls = visibleContent.extractUrls()
-                val annotatedContent = buildAnnotatedString {
-                    var lastIndex = 0
-                    for (url in urls) {
-                        val startIndex = visibleContent.indexOf(url, lastIndex)
-                        if (startIndex != -1) {
-                            append(visibleContent.substring(lastIndex, startIndex))
-                            withStyle(
-                                style = SpanStyle(
-                                    color = MaterialTheme.colorScheme.primary,
-                                    textDecoration = TextDecoration.Underline
-                                )
-                            ) {
-                                append(url)
-                            }
-                            lastIndex = startIndex + url.length
-                        }
-                    }
-                    if (lastIndex < visibleContent.length) {
-                        append(visibleContent.substring(lastIndex))
-                    }
-                }
-
-                if (visibleContent.isNotBlank()) {
-                    Text(
-                        text = annotatedContent,
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                }
-
-                // Link actions
-                if (urls.isNotEmpty()) {
                     Spacer(modifier = Modifier.height(16.dp))
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        urls.forEach { url ->
-                            OutlinedButton(
-                                onClick = {
-                                    try {
-                                        val parsedUri = if (url.startsWith("http")) {
-                                            Uri.parse(url)
-                                        } else {
-                                            Uri.parse("https://$url")
-                                        }
-                                        context.startActivity(Intent(Intent.ACTION_VIEW, parsedUri))
-                                    } catch (e: Exception) {
-                                        // Invalid URL
-                                    }
-                                },
-                                shape = RoundedCornerShape(12.dp),
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Icon(
-                                    Icons.Outlined.OpenInNew,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(18.dp)
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text("Open $url", maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                }
+
+                contentLines.forEachIndexed { index, line ->
+                    when (val attachment = parseInlineAttachment(line)) {
+                        null -> {
+                            if (line.isNotBlank()) {
+                                InlineTextLine(line = line, context = context)
+                            } else {
+                                Spacer(modifier = Modifier.height(8.dp))
                             }
                         }
+
+                        else -> when (attachment.type) {
+                            InlineAttachmentType.IMAGE -> {
+                                InlineImageBlock(
+                                    imageUri = attachment.uri,
+                                    onOpen = { openStoredAttachment(context, attachment.uri, "image/*") }
+                                )
+                            }
+
+                            InlineAttachmentType.FILE -> {
+                                InlineDocumentBlock(
+                                    attachment = attachment,
+                                    onOpen = { openStoredAttachment(context, attachment.uri, "*/*") }
+                                )
+                            }
+                        }
+                    }
+
+                    if (index < contentLines.lastIndex) {
+                        Spacer(modifier = Modifier.height(12.dp))
                     }
                 }
 
@@ -528,6 +491,128 @@ fun DetailScreen(
                 contentAlignment = Alignment.Center
             ) {
                 CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+            }
+        }
+    }
+}
+
+@Composable
+private fun InlineImageBlock(
+    imageUri: String,
+    onOpen: () -> Unit
+) {
+    AsyncImage(
+        model = ImageRequest.Builder(LocalContext.current)
+            .data(imageUri)
+            .size(Size.ORIGINAL)
+            .crossfade(true)
+            .build(),
+        contentDescription = "Image",
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .clickable(onClick = onOpen),
+        contentScale = ContentScale.FillWidth
+    )
+}
+
+@Composable
+private fun InlineDocumentBlock(
+    attachment: com.memoly.dock.utils.InlineAttachment,
+    onOpen: () -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onOpen),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+        )
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(Icons.Outlined.InsertDriveFile, contentDescription = null)
+            Spacer(modifier = Modifier.width(12.dp))
+            Column {
+                Text(
+                    attachment.fileName ?: "Document",
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Text(
+                    "Tap to open",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun InlineTextLine(
+    line: String,
+    context: android.content.Context
+) {
+    val urls = line.extractUrls()
+    val annotatedContent = buildAnnotatedString {
+        var lastIndex = 0
+        urls.forEach { url ->
+            val startIndex = line.indexOf(url, lastIndex)
+            if (startIndex != -1) {
+                append(line.substring(lastIndex, startIndex))
+                withStyle(
+                    style = SpanStyle(
+                        color = MaterialTheme.colorScheme.primary,
+                        textDecoration = TextDecoration.Underline
+                    )
+                ) {
+                    append(url)
+                }
+                lastIndex = startIndex + url.length
+            }
+        }
+        if (lastIndex < line.length) {
+            append(line.substring(lastIndex))
+        }
+    }
+
+    Text(
+        text = annotatedContent,
+        style = MaterialTheme.typography.bodyLarge,
+        color = MaterialTheme.colorScheme.onSurface
+    )
+
+    if (urls.isNotEmpty()) {
+        Spacer(modifier = Modifier.height(12.dp))
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            urls.forEach { url ->
+                OutlinedButton(
+                    onClick = {
+                        try {
+                            val parsedUri = if (url.startsWith("http")) {
+                                Uri.parse(url)
+                            } else {
+                                Uri.parse("https://$url")
+                            }
+                            context.startActivity(Intent(Intent.ACTION_VIEW, parsedUri))
+                        } catch (_: Exception) {
+                        }
+                    },
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(
+                        Icons.Outlined.OpenInNew,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Open $url", maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                }
             }
         }
     }

@@ -193,6 +193,7 @@ class ReminderWorker(
         val rescheduleIntent = Intent(applicationContext, ReminderReceiver::class.java).apply {
             action = ReminderReceiver.ACTION_RESCHEDULE
             putExtra(ReminderReceiver.EXTRA_MEMORY_ID, memoryId)
+            putExtra(ReminderReceiver.EXTRA_CONTENT, content)
         }
         val reschedulePendingIntent = PendingIntent.getBroadcast(
             applicationContext,

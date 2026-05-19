@@ -417,7 +417,7 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
 
         val path = item.imagePath ?: return item.content
         return when (item.contentType) {
-            ContentType.IMAGE -> buildInlineImageMarker(path)
+            ContentType.IMAGE, ContentType.SCREENSHOT -> buildInlineImageMarker(path)
             ContentType.FILE -> {
                 val fileName = item.content.takeIf { it.isNotBlank() }
                     ?: path.substringAfterLast('/')

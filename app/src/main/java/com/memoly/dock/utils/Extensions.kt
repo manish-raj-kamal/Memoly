@@ -5,6 +5,7 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.text.format.DateUtils
 import android.util.Patterns
+import com.memoly.dock.data.model.MemoryItem
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -138,4 +139,9 @@ fun String.extractDomain(): String? {
     } catch (e: Exception) {
         null
     }
+}
+
+fun MemoryItem.isReminderMissed(now: Long = System.currentTimeMillis()): Boolean {
+    val reminder = reminderTime ?: return false
+    return !isReminderDone && reminder <= now
 }

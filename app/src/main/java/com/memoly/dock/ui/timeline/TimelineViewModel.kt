@@ -37,7 +37,7 @@ class TimelineViewModel(application: Application) : AndroidViewModel(application
     private val _selectedTab = MutableStateFlow(TabType.HOME)
     val selectedTab: StateFlow<TabType> = _selectedTab.asStateFlow()
 
-    private val _remindersFilter = MutableStateFlow<String>("Upcoming") // "Upcoming" or "Completed"
+    private val _remindersFilter = MutableStateFlow("Upcoming")
     val remindersFilter: StateFlow<String> = _remindersFilter.asStateFlow()
 
     private val _sortOrder = MutableStateFlow(SortOrder.DATE_CREATED_DESC)
@@ -66,10 +66,14 @@ class TimelineViewModel(application: Application) : AndroidViewModel(application
                 state.tab == TabType.NOTES -> repository.getItemsByType(ContentType.NOTE)
                 state.tab == TabType.REMINDERS -> repository.getAllItems().map { items -> 
                     val now = System.currentTimeMillis()
-                    items.filter { 
-                        if (it.reminderTime == null) false
-                        else if (state.remFilter == "Upcoming") it.reminderTime > now
-                        else it.reminderTime <= now
+                    items.filter {
+                        val reminderTime = it.reminderTime ?: return@filter false
+                        when (state.remFilter) {
+                            "Missed" -> !it.isReminderDone && reminderTime <= now
+                            "Upcoming" -> !it.isReminderDone && reminderTime > now
+                            "Completed" -> it.isReminderDone
+                            else -> false
+                        }
                     }.sortedBy { it.reminderTime }
                 }
                 state.filter != null -> repository.getItemsByType(state.filter)

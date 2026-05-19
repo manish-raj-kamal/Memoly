@@ -3,6 +3,7 @@ package com.memoly.dock.ui.timeline
 
 import androidx.compose.animation.*
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -108,55 +109,75 @@ fun TimelineScreen(
             }
         },
         bottomBar = {
-            NavigationBar(
-                containerColor = MaterialTheme.colorScheme.surface,
-                tonalElevation = 0.dp,
-                modifier = Modifier.shadow(elevation = 8.dp)
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 18.dp, vertical = 12.dp),
+                contentAlignment = Alignment.Center
             ) {
-                NavigationBarItem(
-                    selected = selectedTab == TabType.HOME,
-                    onClick = { viewModel.setTab(TabType.HOME) },
-                    icon = { Icon(Icons.Outlined.Home, contentDescription = null) },
-                    label = { Text("Home", fontSize = 11.sp) },
-                    colors = NavigationBarItemDefaults.colors(
-                        selectedIconColor = MemolyPrimary,
-                        selectedTextColor = MemolyPrimary,
-                        indicatorColor = MemolyPrimary.copy(alpha = 0.1f)
-                    )
-                )
-                NavigationBarItem(
-                    selected = selectedTab == TabType.FAVORITES,
-                    onClick = { viewModel.setTab(TabType.FAVORITES) },
-                    icon = { Icon(if (selectedTab == TabType.FAVORITES) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder, contentDescription = null) },
-                    label = { Text("Favourites", fontSize = 11.sp) },
-                    colors = NavigationBarItemDefaults.colors(
-                        selectedIconColor = MemolyPrimary,
-                        selectedTextColor = MemolyPrimary,
-                        indicatorColor = MemolyPrimary.copy(alpha = 0.1f)
-                    )
-                )
-                NavigationBarItem(
-                    selected = selectedTab == TabType.REMINDERS,
-                    onClick = { viewModel.setTab(TabType.REMINDERS) },
-                    icon = { Icon(Icons.Outlined.NotificationsActive, contentDescription = null) },
-                    label = { Text("Reminders", fontSize = 11.sp) },
-                    colors = NavigationBarItemDefaults.colors(
-                        selectedIconColor = MemolyPrimary,
-                        selectedTextColor = MemolyPrimary,
-                        indicatorColor = MemolyPrimary.copy(alpha = 0.1f)
-                    )
-                )
-                NavigationBarItem(
-                    selected = selectedTab == TabType.NOTES,
-                    onClick = { viewModel.setTab(TabType.NOTES) },
-                    icon = { Icon(Icons.Outlined.StickyNote2, contentDescription = null) },
-                    label = { Text("Notes", fontSize = 11.sp) },
-                    colors = NavigationBarItemDefaults.colors(
-                        selectedIconColor = MemolyPrimary,
-                        selectedTextColor = MemolyPrimary,
-                        indicatorColor = MemolyPrimary.copy(alpha = 0.1f)
-                    )
-                )
+                Surface(
+                    shape = RoundedCornerShape(32.dp),
+                    color = MaterialTheme.colorScheme.surface,
+                    tonalElevation = 0.dp,
+                    shadowElevation = 16.dp,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .border(
+                            width = 1.dp,
+                            color = MaterialTheme.colorScheme.outline.copy(alpha = 0.12f),
+                            shape = RoundedCornerShape(32.dp)
+                        )
+                ) {
+                    NavigationBar(
+                        containerColor = Color.Transparent,
+                        tonalElevation = 0.dp
+                    ) {
+                        NavigationBarItem(
+                            selected = selectedTab == TabType.HOME,
+                            onClick = { viewModel.setTab(TabType.HOME) },
+                            icon = { Icon(Icons.Outlined.Home, contentDescription = null) },
+                            label = { Text("Home", fontSize = 11.sp) },
+                            colors = NavigationBarItemDefaults.colors(
+                                selectedIconColor = MemolyPrimary,
+                                selectedTextColor = MemolyPrimary,
+                                indicatorColor = MemolyPrimary.copy(alpha = 0.12f)
+                            )
+                        )
+                        NavigationBarItem(
+                            selected = selectedTab == TabType.FAVORITES,
+                            onClick = { viewModel.setTab(TabType.FAVORITES) },
+                            icon = { Icon(if (selectedTab == TabType.FAVORITES) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder, contentDescription = null) },
+                            label = { Text("Favourites", fontSize = 11.sp) },
+                            colors = NavigationBarItemDefaults.colors(
+                                selectedIconColor = MemolyPrimary,
+                                selectedTextColor = MemolyPrimary,
+                                indicatorColor = MemolyPrimary.copy(alpha = 0.12f)
+                            )
+                        )
+                        NavigationBarItem(
+                            selected = selectedTab == TabType.REMINDERS,
+                            onClick = { viewModel.setTab(TabType.REMINDERS) },
+                            icon = { Icon(Icons.Outlined.NotificationsActive, contentDescription = null) },
+                            label = { Text("Reminders", fontSize = 11.sp) },
+                            colors = NavigationBarItemDefaults.colors(
+                                selectedIconColor = MemolyPrimary,
+                                selectedTextColor = MemolyPrimary,
+                                indicatorColor = MemolyPrimary.copy(alpha = 0.12f)
+                            )
+                        )
+                        NavigationBarItem(
+                            selected = selectedTab == TabType.NOTES,
+                            onClick = { viewModel.setTab(TabType.NOTES) },
+                            icon = { Icon(Icons.Outlined.StickyNote2, contentDescription = null) },
+                            label = { Text("Notes", fontSize = 11.sp) },
+                            colors = NavigationBarItemDefaults.colors(
+                                selectedIconColor = MemolyPrimary,
+                                selectedTextColor = MemolyPrimary,
+                                indicatorColor = MemolyPrimary.copy(alpha = 0.12f)
+                            )
+                        )
+                    }
+                }
             }
         }
     ) { padding ->
@@ -220,7 +241,7 @@ fun TimelineScreen(
             } else {
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(bottom = 16.dp)
+                    contentPadding = PaddingValues(bottom = 112.dp)
                 ) {
                     // 1. Pinned Section
                     if (pinnedItems.isNotEmpty()) {
@@ -308,7 +329,7 @@ private fun RemindersFilterRow(
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        val filters = listOf("Upcoming", "Completed")
+        val filters = listOf("Missed", "Upcoming", "Completed")
         items(filters) { filter ->
             FilterChip(
                 selected = selectedFilter == filter,
@@ -316,8 +337,8 @@ private fun RemindersFilterRow(
                 label = { Text(filter, style = MaterialTheme.typography.labelMedium) },
                 shape = RoundedCornerShape(10.dp),
                 colors = FilterChipDefaults.filterChipColors(
-                    selectedContainerColor = MemolyPrimary.copy(alpha = 0.15f),
-                    selectedLabelColor = MemolyPrimary
+                    selectedContainerColor = if (filter == "Missed") MemolyError.copy(alpha = 0.14f) else MemolyPrimary.copy(alpha = 0.15f),
+                    selectedLabelColor = if (filter == "Missed") MemolyError else MemolyPrimary
                 )
             )
         }
@@ -539,6 +560,7 @@ fun TimelineItemRow(
     modifier: Modifier = Modifier
 ) {
     var showDeleteDialog by remember { mutableStateOf(false) }
+    val isMissedReminder = item.isReminderMissed()
 
     if (showDeleteDialog) {
         AlertDialog(
@@ -561,7 +583,7 @@ fun TimelineItemRow(
     }
 
     // Determine dot color based on content type
-    val dotColor = contentTypeColor(item.contentType)
+    val dotColor = if (isMissedReminder) MemolyError else contentTypeColor(item.contentType)
 
     Row(
         modifier = modifier
@@ -622,7 +644,11 @@ fun TimelineItemRow(
                 .padding(vertical = 4.dp),
             shape = RoundedCornerShape(16.dp),
             colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                containerColor = if (item.isPinned) {
+                    Color(0xFFFFF6D8)
+                } else {
+                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                }
             ),
             elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
         ) {
@@ -749,25 +775,41 @@ fun TimelineItemRow(
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                         Surface(
                             shape = RoundedCornerShape(8.dp),
-                            color = if (item.isReminderDone) MaterialTheme.colorScheme.surfaceVariant else MemolySecondary.copy(alpha = 0.2f)
+                            color = when {
+                                item.isReminderDone -> MaterialTheme.colorScheme.surfaceVariant
+                                isMissedReminder -> MemolyError.copy(alpha = 0.18f)
+                                else -> MemolySecondary.copy(alpha = 0.2f)
+                            }
                         ) {
                             Row(
                                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Icon(
-                                    imageVector = if (item.isReminderDone) Icons.Outlined.CheckCircle else Icons.Outlined.Notifications,
+                                    imageVector = when {
+                                        item.isReminderDone -> Icons.Outlined.CheckCircle
+                                        isMissedReminder -> Icons.Outlined.ErrorOutline
+                                        else -> Icons.Outlined.Notifications
+                                    },
                                     contentDescription = null,
-                                    tint = if (item.isReminderDone) MaterialTheme.colorScheme.onSurfaceVariant else MemolySecondary,
+                                    tint = when {
+                                        item.isReminderDone -> MaterialTheme.colorScheme.onSurfaceVariant
+                                        isMissedReminder -> MemolyError
+                                        else -> MemolySecondary
+                                    },
                                     modifier = Modifier.size(14.dp)
                                 )
                                 Spacer(modifier = Modifier.width(4.dp))
                                 Text(
-                                    text = item.reminderTime.toTimeString(),
+                                    text = if (isMissedReminder) "Missed • ${item.reminderTime.toTimeString()}" else item.reminderTime.toTimeString(),
                                     style = MaterialTheme.typography.labelSmall.copy(
                                         textDecoration = if (item.isReminderDone) androidx.compose.ui.text.style.TextDecoration.LineThrough else null
                                     ),
-                                    color = if (item.isReminderDone) MaterialTheme.colorScheme.onSurfaceVariant else MemolySecondary
+                                    color = when {
+                                        item.isReminderDone -> MaterialTheme.colorScheme.onSurfaceVariant
+                                        isMissedReminder -> MemolyError
+                                        else -> MemolySecondary
+                                    }
                                 )
                             }
                         }

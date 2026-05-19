@@ -74,6 +74,7 @@ class DetailViewModel(application: Application) : AndroidViewModel(application) 
 
     fun rescheduleReminder(timeMillis: Long) {
         val item = _memoryItem.value ?: return
+        if (timeMillis <= System.currentTimeMillis()) return
         viewModelScope.launch {
             val updatedItem = item.copy(
                 reminderTime = timeMillis,

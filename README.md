@@ -1,52 +1,40 @@
 # Memoly
 
-Memoly is an offline-first Android note and capture app built with Kotlin, Jetpack Compose, Room, DataStore, WorkManager, and ML Kit OCR.
+Memoly is an offline-first Android note and capture app built with Kotlin and Jetpack Compose.
 
-It supports:
+## Features
 
-- Timeline-based note browsing
-- Quick capture overlay
-- Share-to-app text, links, images, and files
-- Read-only detail view with edit flow
-- Reminder scheduling with notification actions
-- Screenshot detection and OCR
+- Save notes, links, images, screenshots, and files
+- Quick capture flow
+- Read-only detail page with edit option
+- Reminder scheduling and reminder notifications
 - Favorites, pinning, tags, and search
-
-## Tech Stack
-
-- Kotlin
-- Jetpack Compose
-- AndroidX Navigation
-- Room
-- DataStore
-- WorkManager
-- Coil
-- ML Kit Text Recognition
+- Screenshot detection and OCR support
 
 ## Requirements
 
-- Windows, macOS, or Linux
-- Android Studio with Android SDK installed
+- Android Studio
 - JDK 11
+- Android SDK installed through Android Studio
 - Android device or emulator
 - Minimum Android version: Android 8.0 (API 26)
 
-## Clone And Open
+## Open The Project
 
 1. Clone the repository.
 2. Open the project in Android Studio.
-3. Let Gradle sync completely.
-4. If prompted, install the required Android SDK/platform tools from Android Studio.
+3. Wait for Gradle sync to finish.
+4. Let Android Studio install any missing SDK components if prompted.
 
-## Run In Android Studio
+## Run The App
 
-1. Open the project.
-2. Wait for Gradle sync to finish.
-3. Connect a physical Android device with USB debugging enabled, or start an emulator.
-4. Select the `app` run configuration.
-5. Click `Run`.
+### Android Studio
 
-## Run From Terminal
+1. Connect a physical device or start an emulator.
+2. Select the `app` configuration.
+3. Click `Run`.
+
+### Terminal
 
 Build the debug APK:
 
@@ -60,96 +48,79 @@ Compile Kotlin only:
 .\gradlew.bat :app:compileDebugKotlin
 ```
 
-There is also a helper script for Windows:
+Windows helper script:
 
 ```powershell
 .\launch-wireless.ps1
 ```
 
-That script can:
+## Permissions
 
-- detect connected devices
-- detect wireless-debug targets
-- start an emulator
-- build the app if sources changed
-- install and launch the debug APK
+Depending on the features you use, the app may request:
 
-## First-Run Permissions
-
-Depending on Android version and which features you use, Memoly may ask for:
-
-- `POST_NOTIFICATIONS` for reminder notifications
-- `READ_MEDIA_IMAGES` or `READ_EXTERNAL_STORAGE` for screenshot detection and image access
-- Accessibility permission for the quick capture gesture service
-
-## Reminder Behavior
-
-- Reminders are stored locally in Room.
-- Notifications are scheduled through WorkManager.
-- Reboot recovery is handled by `BootReceiver`.
-- Reminder notifications support direct `Reschedule` and `Mark Done` actions.
-- `Reschedule` currently snoozes the reminder by 1 hour without opening the app.
+- notification permission for reminders
+- media access for screenshots and images
+- accessibility permission for quick capture gestures
 
 ## Project Structure
 
 ```text
 app/src/main/java/com/memoly/dock/
-  data/         Room entities, DAO, repository
-  domain/       domain models and reminder parsing
-  receivers/    boot and reminder notification receivers
-  services/     accessibility, screenshot observer, OCR, QS tile
-  settings/     DataStore preferences
-  ui/           Compose screens, components, navigation, view models
-  utils/        helpers for formatting, attachments, and file handling
-  workers/      WorkManager reminder worker
+  data/
+  domain/
+  receivers/
+  services/
+  settings/
+  ui/
+  utils/
+  workers/
 ```
 
-## Files That Should Not Be Committed
+## Connect A Physical Device With ADB
 
-Keep these local and out of Git:
+### USB Debugging
 
-- `local.properties`
-- signing keystores
-- `.idea/`
-- build outputs
-- device-specific or user-specific SDK paths
-
-The current `.gitignore` already excludes the important local Android files, especially `local.properties`.
-
-## GitHub Safety Check
-
-I checked the tracked files in this repository and did not find obvious secrets like:
-
-- API keys
-- private tokens
-- passwords
-- keystore credentials
-- committed `local.properties`
-
-The current tracked files look generally safe to publish. A few notes:
-
-- `launch-wireless.ps1` is safe; it reads local SDK paths at runtime but does not store secrets.
-- `.vscode/tasks.json` is safe; it only launches the helper script.
-- `.idea/` is currently untracked and should stay untracked.
-- If you ever add signing configs, Firebase files, or API-backed features later, do not commit those credentials.
-
-## Suggested Pre-Push Checklist
-
-Before pushing new changes, quickly verify:
+1. On the phone, enable Developer options.
+2. In Developer options, enable `USB debugging`.
+3. Connect the phone to the computer with a USB cable.
+4. Accept the RSA debugging prompt on the phone.
+5. Check that ADB can see the device:
 
 ```powershell
-git status --short
-git ls-files | Select-String "local.properties|keystore|google-services|\.env"
+adb devices
 ```
 
-And optionally scan for obvious secrets:
+6. If the device appears as `device`, you are ready to run the app.
+
+### Wireless Debugging
+
+For Android 11 or newer:
+
+1. Connect the phone and computer to the same Wi-Fi network.
+2. On the phone, open Developer options.
+3. Enable `Wireless debugging`.
+4. Open `Wireless debugging` and choose `Pair device with pairing code`.
+5. Pair from the computer:
 
 ```powershell
-rg -n "API_KEY|SECRET|TOKEN|PASSWORD|BEGIN PRIVATE KEY|ghp_|github_pat_|AIza" .
+adb pair IP_ADDRESS:PAIR_PORT
 ```
 
-## Notes
+6. Enter the pairing code shown on the phone.
+7. Connect to the device:
 
-- This project currently targets Android SDK 36 and uses recent AndroidX/Compose versions, so a fairly recent Android Studio install is recommended.
-- Room schema history is stored under `app/schemas/`.
-- `Academic_Project_Report.md` is part of the repository and appears to be documentation, not runtime-sensitive app data.
+```powershell
+adb connect IP_ADDRESS:CONNECT_PORT
+```
+
+8. Confirm the device is available:
+
+```powershell
+adb devices
+```
+
+If you want the included helper script to detect and launch on available devices:
+
+```powershell
+.\launch-wireless.ps1
+```

@@ -102,33 +102,35 @@ fun EditorToolbar(
     Surface(
         modifier = modifier
             .fillMaxWidth()
-            .height(52.dp),
-        color = Color(0xFFFFF9C4).copy(alpha = 0.6f), // Light cream/yellow background
-        tonalElevation = 0.dp
+            .height(64.dp),
+        shape = RoundedCornerShape(999.dp),
+        color = Color(0xFFFFF5CF).copy(alpha = 0.92f),
+        tonalElevation = 0.dp,
+        shadowElevation = 12.dp
     ) {
         Row(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 6.dp),
+                .padding(horizontal = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = onFileClick, modifier = Modifier.size(40.dp)) {
+                IconButton(onClick = onFileClick, modifier = Modifier.size(42.dp)) {
                     Icon(Icons.Outlined.AddCircleOutline, contentDescription = "Add File", tint = Color.Black)
                 }
-                IconButton(onClick = onImageClick, modifier = Modifier.size(40.dp)) {
+                IconButton(onClick = onImageClick, modifier = Modifier.size(42.dp)) {
                     Icon(Icons.Outlined.Image, contentDescription = "Add Image", tint = Color.Black)
                 }
-                IconButton(onClick = onTagClick, modifier = Modifier.size(40.dp)) {
+                IconButton(onClick = onTagClick, modifier = Modifier.size(42.dp)) {
                     Icon(Icons.Outlined.Tag, contentDescription = "Tags", tint = Color.Black)
                 }
                 IconButton(
                     onClick = onListToggle,
                     modifier = Modifier.background(
                         if (isListMode) Color.Black.copy(alpha = 0.1f) else Color.Transparent,
-                        RoundedCornerShape(8.dp)
-                    ).size(40.dp)
+                        RoundedCornerShape(999.dp)
+                    ).size(42.dp)
                 ) {
                     Icon(
                         imageVector = if (isListMode) Icons.Filled.CheckBox else Icons.Outlined.CheckBoxOutlineBlank,
@@ -141,12 +143,13 @@ fun EditorToolbar(
             // Reminder Button (REM)
             Surface(
                 onClick = onReminderClick,
-                shape = RoundedCornerShape(24.dp),
-                color = Color(0xFFFFC107), // Amber/Yellow color from reference
-                tonalElevation = 2.dp
+                shape = RoundedCornerShape(999.dp),
+                color = Color(0xFFFFC107),
+                tonalElevation = 0.dp,
+                shadowElevation = 6.dp
             ) {
                 Row(
-                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {

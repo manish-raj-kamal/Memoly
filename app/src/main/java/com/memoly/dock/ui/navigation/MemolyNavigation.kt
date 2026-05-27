@@ -2,6 +2,7 @@ package com.memoly.dock.ui.navigation
 
 import androidx.compose.animation.*
 import androidx.compose.animation.core.tween
+import androidx.compose.material3.windowsizeclass.WindowSizeClass
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.navigation.NavType
@@ -37,6 +38,7 @@ object MemolyRoutes {
  */
 @Composable
 fun MemolyNavigation(
+    windowSizeClass: WindowSizeClass,
     startDestination: String = MemolyRoutes.TIMELINE,
     onOnboardingComplete: () -> Unit = {},
     deepLinkMemoryId: Long? = null,
@@ -87,6 +89,7 @@ fun MemolyNavigation(
         // Timeline
         composable(MemolyRoutes.TIMELINE) {
             TimelineScreen(
+                windowSizeClass = windowSizeClass,
                 onAddClick = { navController.navigate(MemolyRoutes.editor()) },
                 onItemClick = { id -> navController.navigate(MemolyRoutes.detail(id)) },
                 onSettingsClick = { navController.navigate(MemolyRoutes.SETTINGS) }
@@ -105,6 +108,7 @@ fun MemolyNavigation(
         ) { backStackEntry ->
             val itemId = backStackEntry.arguments?.getLong("itemId")?.takeIf { it != -1L }
             EditorScreen(
+                windowSizeClass = windowSizeClass,
                 editItemId = itemId,
                 onNavigateBack = { navController.popBackStack() }
             )
@@ -119,6 +123,7 @@ fun MemolyNavigation(
         ) { backStackEntry ->
             val memoryId = backStackEntry.arguments?.getLong("memoryId") ?: return@composable
             DetailScreen(
+                windowSizeClass = windowSizeClass,
                 memoryId = memoryId,
                 onNavigateBack = { navController.popBackStack() },
                 onEditClick = { id ->
@@ -130,6 +135,7 @@ fun MemolyNavigation(
         // Settings
         composable(MemolyRoutes.SETTINGS) {
             SettingsScreen(
+                windowSizeClass = windowSizeClass,
                 onNavigateBack = { navController.popBackStack() }
             )
         }

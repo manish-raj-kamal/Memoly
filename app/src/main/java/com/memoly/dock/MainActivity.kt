@@ -9,6 +9,8 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.material3.windowsizeclass.ExperimentalMaterial3WindowSizeClassApi
+import androidx.compose.material3.windowsizeclass.calculateWindowSizeClass
 import androidx.compose.runtime.*
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
@@ -53,6 +55,7 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    @OptIn(ExperimentalMaterial3WindowSizeClassApi::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -94,9 +97,11 @@ class MainActivity : ComponentActivity() {
             }
 
             setContent {
+                val windowSizeClass = calculateWindowSizeClass(this@MainActivity)
                 val pendingDeepLink by deepLinkId.collectAsState()
                 MemolyTheme {
                     MemolyNavigation(
+                        windowSizeClass = windowSizeClass,
                         startDestination = startDestination,
                         onOnboardingComplete = {
                             lifecycleScope.launch {

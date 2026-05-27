@@ -14,6 +14,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
+import androidx.compose.material3.windowsizeclass.WindowHeightSizeClass
+import androidx.compose.material3.windowsizeclass.WindowSizeClass
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -52,6 +54,7 @@ import com.memoly.dock.utils.*
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DetailScreen(
+    windowSizeClass: WindowSizeClass,
     memoryId: Long,
     onNavigateBack: () -> Unit,
     onEditClick: (Long) -> Unit,
@@ -63,6 +66,8 @@ fun DetailScreen(
 
     var showDeleteDialog by remember { mutableStateOf(false) }
     var showCancelReminderDialog by remember { mutableStateOf(false) }
+
+    val isCompactHeight = windowSizeClass.heightSizeClass == WindowHeightSizeClass.Compact
 
     // Custom Date/Time Picker State
     var showDatePicker by remember { mutableStateOf(false) }
@@ -192,7 +197,20 @@ fun DetailScreen(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             TopAppBar(
-                title = { Text("Memory Details") },
+                title = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            "Memory Details",
+                            style = if (isCompactHeight) MaterialTheme.typography.titleMedium else MaterialTheme.typography.titleLarge
+                        )
+                        if (isCompactHeight) {
+                            item?.let {
+                                Spacer(Modifier.width(12.dp))
+                                ContentTypeChip(type = it.contentType)
+                            }
+                        }
+                    }
+                },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
                         Icon(Icons.Filled.ArrowBack, contentDescription = "Back")
@@ -236,261 +254,269 @@ fun DetailScreen(
             )
         }
     ) { padding ->
-        item?.let { memory ->
-            val isMissedReminder = memory.isReminderMissed()
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(padding)
-                    .verticalScroll(rememberScrollState())
-                    .padding(20.dp)
-            ) {
-                // Metadata card
-                Card(
-                    shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-                    )
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.TopCenter
+        ) {
+            item?.let { memory ->
+                val isMissedReminder = memory.isReminderMissed()
+                Column(
+                    modifier = Modifier
+                        .fillMaxHeight()
+                        .widthIn(max = 800.dp)
+                        .padding(padding)
+                        .verticalScroll(rememberScrollState())
+                        .padding(horizontal = 20.dp, vertical = if (isCompactHeight) 8.dp else 20.dp)
                 ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            ContentTypeChip(type = memory.contentType)
-                            if (memory.isPinned) {
-                                Surface(
-                                    shape = RoundedCornerShape(8.dp),
-                                    color = MemolyTertiary.copy(alpha = 0.12f)
-                                ) {
-                                    Row(
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                    ) {
-                                        Icon(
-                                            Icons.Filled.PushPin,
-                                            null,
-                                            Modifier.size(12.dp),
-                                            tint = MemolyTertiary
-                                        )
-                                        Text(
-                                            "Pinned",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = MemolyTertiary
-                                        )
-                                    }
-                                }
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(12.dp))
-
-                        // Time info
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(16.dp)
-                        ) {
-                            Column {
-                                Text(
-                                    "Created",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                                Text(
-                                    memory.createdAt.toDateTimeString(),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    fontWeight = FontWeight.Medium
-                                )
-                            }
-                            memory.sourceApp?.let {
-                                Column {
-                                    Text(
-                                        "Source",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                    Text(
-                                        it,
-                                        style = MaterialTheme.typography.bodySmall,
-                                        fontWeight = FontWeight.Medium
-                                    )
-                                }
-                            }
-                        }
-
-                        // Reminder info
-                        memory.reminderTime?.let { reminderTime ->
-                            Spacer(modifier = Modifier.height(12.dp))
+                    // Metadata card
+                    Card(
+                        shape = RoundedCornerShape(16.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                        )
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp)) {
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(
-                                        imageVector = when {
-                                            memory.isReminderDone -> Icons.Outlined.CheckCircle
-                                            isMissedReminder -> Icons.Outlined.ErrorOutline
-                                            else -> Icons.Outlined.Notifications
-                                        },
-                                        contentDescription = null,
-                                        tint = when {
-                                            memory.isReminderDone -> MaterialTheme.colorScheme.onSurfaceVariant
-                                            isMissedReminder -> MemolyError
-                                            else -> MemolySecondary
-                                        },
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text(
-                                        text = if (isMissedReminder) "Missed • ${reminderTime.toDateTimeString()}" else reminderTime.toDateTimeString(),
-                                        style = MaterialTheme.typography.bodySmall.copy(
-                                            textDecoration = if (memory.isReminderDone) androidx.compose.ui.text.style.TextDecoration.LineThrough else null
-                                        ),
-                                        color = when {
-                                            memory.isReminderDone -> MaterialTheme.colorScheme.onSurfaceVariant
-                                            isMissedReminder -> MemolyError
-                                            else -> MemolySecondary
+                                if (!isCompactHeight) {
+                                    ContentTypeChip(type = memory.contentType)
+                                }
+                                if (memory.isPinned) {
+                                    Surface(
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = MemolyTertiary.copy(alpha = 0.12f)
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                        ) {
+                                            Icon(
+                                                Icons.Filled.PushPin,
+                                                null,
+                                                Modifier.size(12.dp),
+                                                tint = MemolyTertiary
+                                            )
+                                            Text(
+                                                "Pinned",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MemolyTertiary
+                                            )
                                         }
-                                    )
+                                    }
                                 }
                             }
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                if (!memory.isReminderDone) {
+
+                            Spacer(modifier = Modifier.height(if (isCompactHeight && !memory.isPinned) 0.dp else 12.dp))
+
+                            // Time info
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(16.dp)
+                            ) {
+                                Column {
+                                    Text(
+                                        "Created",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    Text(
+                                        memory.createdAt.toDateTimeString(),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                }
+                                memory.sourceApp?.let {
+                                    Column {
+                                        Text(
+                                            "Source",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                        Text(
+                                            it,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            fontWeight = FontWeight.Medium
+                                        )
+                                    }
+                                }
+                            }
+
+                            // Reminder info
+                            memory.reminderTime?.let { reminderTime ->
+                                Spacer(modifier = Modifier.height(12.dp))
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(
+                                            imageVector = when {
+                                                memory.isReminderDone -> Icons.Outlined.CheckCircle
+                                                isMissedReminder -> Icons.Outlined.ErrorOutline
+                                                else -> Icons.Outlined.Notifications
+                                            },
+                                            contentDescription = null,
+                                            tint = when {
+                                                memory.isReminderDone -> MaterialTheme.colorScheme.onSurfaceVariant
+                                                isMissedReminder -> MemolyError
+                                                else -> MemolySecondary
+                                            },
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            text = if (isMissedReminder) "Missed • ${reminderTime.toDateTimeString()}" else reminderTime.toDateTimeString(),
+                                            style = MaterialTheme.typography.bodySmall.copy(
+                                                textDecoration = if (memory.isReminderDone) androidx.compose.ui.text.style.TextDecoration.LineThrough else null
+                                            ),
+                                            color = when {
+                                                memory.isReminderDone -> MaterialTheme.colorScheme.onSurfaceVariant
+                                                isMissedReminder -> MemolyError
+                                                else -> MemolySecondary
+                                            }
+                                        )
+                                    }
+                                }
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    if (!memory.isReminderDone) {
+                                        OutlinedButton(
+                                            onClick = { viewModel.markReminderDone() },
+                                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                                            modifier = Modifier.height(32.dp)
+                                        ) {
+                                            Text("Mark Done", fontSize = 12.sp)
+                                        }
+                                    }
                                     OutlinedButton(
-                                        onClick = { viewModel.markReminderDone() },
+                                        onClick = { showDatePicker = true },
                                         contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
                                         modifier = Modifier.height(32.dp)
                                     ) {
-                                        Text("Mark Done", fontSize = 12.sp)
+                                        Text("Reschedule", fontSize = 12.sp)
+                                    }
+                                    OutlinedButton(
+                                        onClick = { showCancelReminderDialog = true },
+                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                                        modifier = Modifier.height(32.dp)
+                                    ) {
+                                        Text("Cancel", fontSize = 12.sp, color = MemolyError)
                                     }
                                 }
-                                OutlinedButton(
-                                    onClick = { showDatePicker = true },
-                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
-                                    modifier = Modifier.height(32.dp)
-                                ) {
-                                    Text("Reschedule", fontSize = 12.sp)
+                                reminderError?.let { message ->
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Text(
+                                        text = message,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MemolyError
+                                    )
                                 }
-                                OutlinedButton(
-                                    onClick = { showCancelReminderDialog = true },
-                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
-                                    modifier = Modifier.height(32.dp)
-                                ) {
-                                    Text("Cancel", fontSize = 12.sp, color = MemolyError)
-                                }
-                            }
-                            reminderError?.let { message ->
-                                Spacer(modifier = Modifier.height(8.dp))
-                                Text(
-                                    text = message,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MemolyError
-                                )
-                            }
-                        }
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(20.dp))
-
-                // Title
-                if (!memory.title.isNullOrBlank()) {
-                    Text(
-                        text = memory.title,
-                        style = MaterialTheme.typography.headlineMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-                    Spacer(modifier = Modifier.height(12.dp))
-                }
-
-                val contentLines = memory.content.lineSequence().toList()
-                val legacyPreviewImage = memory.imagePath ?: extractFirstInlineImageUri(memory.content)
-
-                if ((memory.contentType == ContentType.SCREENSHOT || memory.contentType == ContentType.IMAGE) &&
-                    legacyPreviewImage != null && contentLines.none { parseInlineAttachment(it)?.type == InlineAttachmentType.IMAGE }
-                ) {
-                    InlineImageBlock(
-                        imageUri = legacyPreviewImage,
-                        onOpen = { openStoredAttachment(context, legacyPreviewImage, "image/*") }
-                    )
-                    Spacer(modifier = Modifier.height(16.dp))
-                }
-
-                contentLines.forEachIndexed { index, line ->
-                    when (val attachment = parseInlineAttachment(line)) {
-                        null -> {
-                            if (line.isNotBlank()) {
-                                InlineTextLine(line = line, context = context)
-                            } else {
-                                Spacer(modifier = Modifier.height(8.dp))
-                            }
-                        }
-
-                        else -> when (attachment.type) {
-                            InlineAttachmentType.IMAGE -> {
-                                InlineImageBlock(
-                                    imageUri = attachment.uri,
-                                    onOpen = { openStoredAttachment(context, attachment.uri, "image/*") }
-                                )
-                            }
-
-                            InlineAttachmentType.FILE -> {
-                                InlineDocumentBlock(
-                                    attachment = attachment,
-                                    onOpen = { openStoredAttachment(context, attachment.uri, "*/*") }
-                                )
                             }
                         }
                     }
 
-                    if (index < contentLines.lastIndex) {
+                    Spacer(modifier = Modifier.height(if (isCompactHeight) 12.dp else 20.dp))
+
+                    // Title
+                    if (!memory.title.isNullOrBlank()) {
+                        Text(
+                            text = memory.title,
+                            style = if (isCompactHeight) MaterialTheme.typography.titleLarge else MaterialTheme.typography.headlineMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                         Spacer(modifier = Modifier.height(12.dp))
                     }
-                }
 
-                // Tags
-                if (!memory.tags.isNullOrBlank()) {
-                    Spacer(modifier = Modifier.height(20.dp))
-                    Text(
-                        "Tags",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        memory.tags.split(",").forEach { tag ->
-                            Surface(
-                                shape = RoundedCornerShape(8.dp),
-                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)
-                            ) {
-                                Text(
-                                    text = "#${tag.trim()}",
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = MaterialTheme.colorScheme.primary
-                                )
+                    val contentLines = memory.content.lineSequence().toList()
+                    val legacyPreviewImage = memory.imagePath ?: extractFirstInlineImageUri(memory.content)
+
+                    if ((memory.contentType == ContentType.SCREENSHOT || memory.contentType == ContentType.IMAGE) &&
+                        legacyPreviewImage != null && contentLines.none { parseInlineAttachment(it)?.type == InlineAttachmentType.IMAGE }
+                    ) {
+                        InlineImageBlock(
+                            imageUri = legacyPreviewImage,
+                            onOpen = { openStoredAttachment(context, legacyPreviewImage, "image/*") }
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+                    }
+
+                    contentLines.forEachIndexed { index, line ->
+                        when (val attachment = parseInlineAttachment(line)) {
+                            null -> {
+                                if (line.isNotBlank()) {
+                                    InlineTextLine(line = line, context = context, isCompact = isCompactHeight)
+                                } else {
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                }
+                            }
+
+                            else -> when (attachment.type) {
+                                InlineAttachmentType.IMAGE -> {
+                                    InlineImageBlock(
+                                        imageUri = attachment.uri,
+                                        onOpen = { openStoredAttachment(context, attachment.uri, "image/*") }
+                                    )
+                                }
+
+                                InlineAttachmentType.FILE -> {
+                                    InlineDocumentBlock(
+                                        attachment = attachment,
+                                        onOpen = { openStoredAttachment(context, attachment.uri, "*/*") }
+                                    )
+                                }
+                            }
+                        }
+
+                        if (index < contentLines.lastIndex) {
+                            Spacer(modifier = Modifier.height(if (isCompactHeight) 8.dp else 12.dp))
+                        }
+                    }
+
+                    // Tags
+                    if (!memory.tags.isNullOrBlank()) {
+                        Spacer(modifier = Modifier.height(if (isCompactHeight) 12.dp else 20.dp))
+                        Text(
+                            "Tags",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            memory.tags.split(",").forEach { tag ->
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)
+                                ) {
+                                    Text(
+                                        text = "#${tag.trim()}",
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                }
                             }
                         }
                     }
-                }
 
-                Spacer(modifier = Modifier.height(32.dp))
-            }
-        } ?: run {
-            // Loading state
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(padding),
-                contentAlignment = Alignment.Center
-            ) {
-                CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+                    Spacer(modifier = Modifier.height(32.dp))
+                }
+            } ?: run {
+                // Loading state
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(padding),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+                }
             }
         }
     }
@@ -555,7 +581,8 @@ private fun InlineDocumentBlock(
 @Composable
 private fun InlineTextLine(
     line: String,
-    context: android.content.Context
+    context: android.content.Context,
+    isCompact: Boolean = false
 ) {
     val urls = line.extractUrls()
     val annotatedContent = buildAnnotatedString {
@@ -582,12 +609,12 @@ private fun InlineTextLine(
 
     Text(
         text = annotatedContent,
-        style = MaterialTheme.typography.bodyLarge,
+        style = if (isCompact) MaterialTheme.typography.bodyMedium else MaterialTheme.typography.bodyLarge,
         color = MaterialTheme.colorScheme.onSurface
     )
 
     if (urls.isNotEmpty()) {
-        Spacer(modifier = Modifier.height(12.dp))
+        Spacer(modifier = Modifier.height(if (isCompact) 8.dp else 12.dp))
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             urls.forEach { url ->
                 OutlinedButton(

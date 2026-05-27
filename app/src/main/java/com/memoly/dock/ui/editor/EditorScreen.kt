@@ -8,48 +8,18 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.offset
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.PushPin
-import androidx.compose.material.icons.outlined.InsertDriveFile
-import androidx.compose.material.icons.outlined.PushPin
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilledTonalButton
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.outlined.*
+import androidx.compose.material3.*
+import androidx.compose.material3.windowsizeclass.WindowHeightSizeClass
+import androidx.compose.material3.windowsizeclass.WindowSizeClass
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -84,8 +54,6 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
@@ -159,6 +127,7 @@ class MediaOffsetMapping(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun EditorScreen(
+    windowSizeClass: WindowSizeClass,
     editItemId: Long? = null,
     onNavigateBack: () -> Unit,
     viewModel: EditorViewModel = viewModel()
@@ -177,6 +146,7 @@ fun EditorScreen(
     val configuration = LocalConfiguration.current
     val focusRequester = remember { FocusRequester() }
     val isEditing = editItemId != null
+    val isCompactHeight = windowSizeClass.heightSizeClass == WindowHeightSizeClass.Compact
     val screenHeight = configuration.screenHeightDp.dp
     val maxImageHeight = screenHeight * 0.7f
     val defaultImageHeight = minOf(320.dp, maxImageHeight)
@@ -321,10 +291,17 @@ fun EditorScreen(
         topBar = {
             TopAppBar(
                 title = {
-                    Text(
-                        if (isEditing) "Edit Memory" else "New Memory",
-                        fontWeight = FontWeight.SemiBold
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            if (isEditing) "Edit Memory" else "New Memory",
+                            fontWeight = FontWeight.SemiBold,
+                            style = if (isCompactHeight) MaterialTheme.typography.titleMedium else MaterialTheme.typography.titleLarge
+                        )
+                        if (isCompactHeight) {
+                            Spacer(Modifier.width(12.dp))
+                            ContentTypeChip(type = contentType)
+                        }
+                    }
                 },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
@@ -343,7 +320,8 @@ fun EditorScreen(
                         onClick = viewModel::save,
                         enabled = (contentValue.text.isNotBlank() || contentType != ContentType.NOTE) && !isSaving,
                         shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier.padding(end = 8.dp)
+                        modifier = Modifier.padding(end = 8.dp),
+                        contentPadding = if (isCompactHeight) PaddingValues(horizontal = 12.dp, vertical = 0.dp) else ButtonDefaults.ContentPadding
                     ) {
                         if (isSaving) {
                             CircularProgressIndicator(
@@ -353,293 +331,383 @@ fun EditorScreen(
                         } else {
                             Icon(Icons.Filled.Check, contentDescription = null, modifier = Modifier.size(18.dp))
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text("Save")
+                            Text("Save", fontSize = if (isCompactHeight) 12.sp else 14.sp)
                         }
                     }
-                }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.background
+                )
             )
         }
     ) { padding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .padding(horizontal = 16.dp)
-                .imePadding()
+        Row(
+            modifier = Modifier.fillMaxSize().padding(padding)
         ) {
-            Row(
-                modifier = Modifier.padding(bottom = 12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                ContentTypeChip(type = contentType)
-                if (!tags.isNullOrBlank()) {
-                    Text(
-                        text = tags.split(",").joinToString(" ") { "#${it.trim()}" },
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.primary,
-                        maxLines = 1
-                    )
-                }
+            // In landscape, we might want a side toolbar
+            if (isCompactHeight) {
+                EditorSideToolbar(
+                    isListMode = isListMode,
+                    onFileClick = { filePickerLauncher.launch("*/*") },
+                    onImageClick = {
+                        imagePickerLauncher.launch(
+                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                        )
+                    },
+                    onTagClick = { showTagDialog = true },
+                    onListToggle = { viewModel.toggleListMode() },
+                    onReminderClick = { showReminderPicker = true },
+                    modifier = Modifier.padding(start = 16.dp, top = 8.dp, bottom = 8.dp)
+                )
             }
 
             Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f)
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
-                    .padding(16.dp)
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.TopCenter
             ) {
-                val scrollState = rememberScrollState()
-                BoxWithConstraints(
+                Column(
                     modifier = Modifier
-                        .fillMaxSize()
-                        .verticalScroll(scrollState)
+                        .fillMaxHeight()
+                        .widthIn(max = 800.dp)
+                        .padding(horizontal = 16.dp)
+                        .imePadding()
                 ) {
-                    val editorWidth = maxWidth
-
-                    Column(modifier = Modifier.fillMaxWidth()) {
-                        BasicTextField(
-                            value = title,
-                            onValueChange = viewModel::updateTitle,
-                            modifier = Modifier.fillMaxWidth(),
-                            textStyle = MaterialTheme.typography.titleLarge.copy(
-                                color = MaterialTheme.colorScheme.onSurface,
-                                fontWeight = FontWeight.Bold
-                            ),
-                            cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
-                            decorationBox = { innerTextField ->
-                                if (title.isEmpty()) {
-                                    Text(
-                                        "Title (Optional)",
-                                        style = MaterialTheme.typography.titleLarge.copy(
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
-                                            fontWeight = FontWeight.Bold
-                                        )
-                                    )
-                                }
-                                innerTextField()
+                    if (!isCompactHeight || !tags.isNullOrBlank()) {
+                        Row(
+                            modifier = Modifier.padding(vertical = if (isCompactHeight) 4.dp else 12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            if (!isCompactHeight) {
+                                ContentTypeChip(type = contentType)
                             }
-                        )
-
-                        Spacer(modifier = Modifier.height(12.dp))
-
-                        HorizontalDivider(
-                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)
-                        )
-
-                        Spacer(modifier = Modifier.height(12.dp))
-
-                        if (contentValue.text.isEmpty()) {
-                            Text(
-                                "Start writing...",
-                                style = MaterialTheme.typography.bodyLarge,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
-                            )
-                        }
-
-                        var textLayoutResult by remember { mutableStateOf<TextLayoutResult?>(null) }
-
-                        LaunchedEffect(contentValue.selection.start, textLayoutResult) {
-                            val layout = textLayoutResult ?: return@LaunchedEffect
-                            if (layout.layoutInput.text.text != annotatedString.text) return@LaunchedEffect
-                            if (annotatedString.isEmpty()) return@LaunchedEffect
-                            focusRequester.requestFocus()
-
-                            val transformedOffset = offsetMapping.originalToTransformed(
-                                contentValue.selection.start.coerceIn(0, contentValue.text.length)
-                            ).coerceAtMost(maxOf(annotatedString.length - 1, 0))
-                            val lineIndex = layout.getLineForOffset(transformedOffset)
-                            val lineBottom = layout.getLineBottom(lineIndex).toInt()
-                            val bottomPadding = with(density) { 72.dp.toPx() }.toInt()
-                            val targetScroll = (lineBottom - scrollState.viewportSize + bottomPadding)
-                                .coerceIn(0, scrollState.maxValue)
-
-                            if (targetScroll > scrollState.value) {
-                                scrollState.animateScrollTo(targetScroll)
-                            }
-                        }
-
-                        BasicTextField(
-                            value = contentValue,
-                            onValueChange = viewModel::updateContentValue,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .heightIn(min = 200.dp)
-                                .focusRequester(focusRequester)
-                                .pointerInput(offsetMapping) {
-                                    detectTapGestures { offset ->
-                                        textLayoutResult?.let { layout ->
-                                            if (layout.layoutInput.text.text != annotatedString.text) return@let
-                                            val transformedOffset = layout.getOffsetForPosition(offset)
-                                            val originalOffset = offsetMapping.transformedToOriginal(transformedOffset)
-                                            viewModel.toggleCheckboxAt(originalOffset)
-                                        }
-                                    }
-                                },
-                            textStyle = MaterialTheme.typography.bodyLarge.copy(
-                                color = MaterialTheme.colorScheme.onSurface,
-                                lineHeight = 30.sp
-                            ),
-                            cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
-                            onTextLayout = { textLayoutResult = it },
-                            visualTransformation = {
-                                TransformedText(annotatedString, offsetMapping)
-                            }
-                        )
-
-                        textLayoutResult?.let { layout ->
-                            if (layout.layoutInput.text.text != annotatedString.text) return@let
-                            val lines = contentValue.text.split("\n")
-                            var currentOriginalOffset = 0
-
-                            lines.forEach { line ->
-                                val attachment = parseInlineAttachment(line)
-                                if (attachment != null) {
-                                    val transformedOffset = offsetMapping.originalToTransformed(currentOriginalOffset)
-                                    val safeOffset = transformedOffset.coerceAtMost(maxOf(annotatedString.length - 1, 0))
-                                    val lineIndex = layout.getLineForOffset(safeOffset)
-                                    val top = with(density) { layout.getLineTop(lineIndex).toDp() }
-                                    val height = with(density) {
-                                        (layout.getLineBottom(lineIndex) - layout.getLineTop(lineIndex)).toDp()
-                                    }
-
-                                    when (attachment.type) {
-                                        InlineAttachmentType.IMAGE -> {
-                                            Box(
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .offset(y = top)
-                                                    .height(height)
-                                                    .clip(RoundedCornerShape(16.dp))
-                                                    .background(Color.Black.copy(alpha = 0.05f))
-                                                    .clickable {
-                                                        openStoredAttachment(context, attachment.uri, "image/*")
-                                                    }
-                                            ) {
-                                                AsyncImage(
-                                                    model = ImageRequest.Builder(context)
-                                                        .data(attachment.uri)
-                                                        .size(Size.ORIGINAL)
-                                                        .crossfade(true)
-                                                        .build(),
-                                                    contentDescription = null,
-                                                    modifier = Modifier.fillMaxSize(),
-                                                    contentScale = ContentScale.Fit,
-                                                    onSuccess = { state ->
-                                                        val drawable = state.result.drawable
-                                                        val width = drawable.intrinsicWidth
-                                                        val height = drawable.intrinsicHeight
-                                                        if (width > 0 && height > 0) {
-                                                            val measuredHeight = calculateInlineImageHeight(
-                                                                availableWidth = editorWidth,
-                                                                intrinsicWidth = width,
-                                                                intrinsicHeight = height,
-                                                                maxHeight = maxImageHeight
-                                                            )
-                                                            if (imageRowHeights[attachment.uri] != measuredHeight) {
-                                                                imageRowHeights[attachment.uri] = measuredHeight
-                                                            }
-                                                        }
-                                                    }
-                                                )
-                                            }
-                                        }
-
-                                        InlineAttachmentType.FILE -> {
-                                            Card(
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .offset(y = top)
-                                                    .height(height)
-                                                    .clickable {
-                                                        openStoredAttachment(context, attachment.uri, "*/*")
-                                                    },
-                                                shape = RoundedCornerShape(12.dp),
-                                                colors = CardDefaults.cardColors(
-                                                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.85f)
-                                                )
-                                            ) {
-                                                Row(
-                                                    modifier = Modifier
-                                                        .fillMaxSize()
-                                                        .padding(horizontal = 14.dp),
-                                                    verticalAlignment = Alignment.CenterVertically
-                                                ) {
-                                                    Icon(
-                                                        Icons.Outlined.InsertDriveFile,
-                                                        contentDescription = null,
-                                                        tint = MemolySecondary
-                                                    )
-                                                    Spacer(modifier = Modifier.width(12.dp))
-                                                    Column {
-                                                        Text(
-                                                            attachment.fileName ?: "File",
-                                                            style = MaterialTheme.typography.bodyMedium,
-                                                            fontWeight = FontWeight.SemiBold
-                                                        )
-                                                        Text(
-                                                            "Tap to open",
-                                                            style = MaterialTheme.typography.labelSmall,
-                                                            color = Color.Gray
-                                                        )
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                } else {
-                                    val checkboxIndex = line.indexOfFirst { it == '☐' || it == '☑' }
-                                    if (checkboxIndex >= 0 && line.take(checkboxIndex).isBlank()) {
-                                        val checkboxOffset = currentOriginalOffset + checkboxIndex
-                                        val transformedOffset = offsetMapping.originalToTransformed(checkboxOffset)
-                                        val lineIndex = layout.getLineForOffset(
-                                            transformedOffset.coerceAtMost(maxOf(annotatedString.length - 1, 0))
-                                        )
-                                        val top = with(density) { layout.getLineTop(lineIndex).toDp() }
-                                        val height = with(density) {
-                                            (layout.getLineBottom(lineIndex) - layout.getLineTop(lineIndex)).toDp()
-                                        }
-                                        val left = with(density) {
-                                            layout.getHorizontalPosition(transformedOffset, true).toDp()
-                                        }
-
-                                        Box(
-                                            modifier = Modifier
-                                                .offset(x = left - 10.dp, y = top)
-                                                .width(48.dp)
-                                                .height(height)
-                                                .clickable {
-                                                    viewModel.toggleCheckboxAt(checkboxOffset)
-                                                }
-                                        )
-                                    }
-                                }
-                                currentOriginalOffset += line.length + 1
+                            if (!tags.isNullOrBlank()) {
+                                Text(
+                                    text = tags.split(",").joinToString(" ") { "#${it.trim()}" },
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    maxLines = 1
+                                )
                             }
                         }
                     }
+
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f)
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
+                            .padding(if (isCompactHeight) 8.dp else 16.dp)
+                    ) {
+                        val scrollState = rememberScrollState()
+                        BoxWithConstraints(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .verticalScroll(scrollState)
+                        ) {
+                            val editorWidth = maxWidth
+
+                            Column(modifier = Modifier.fillMaxWidth()) {
+                                BasicTextField(
+                                    value = title,
+                                    onValueChange = viewModel::updateTitle,
+                                    modifier = Modifier.fillMaxWidth(),
+                                    textStyle = (if (isCompactHeight) MaterialTheme.typography.titleMedium else MaterialTheme.typography.titleLarge).copy(
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        fontWeight = FontWeight.Bold
+                                    ),
+                                    cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                                    decorationBox = { innerTextField ->
+                                        if (title.isEmpty()) {
+                                            Text(
+                                                "Title (Optional)",
+                                                style = (if (isCompactHeight) MaterialTheme.typography.titleMedium else MaterialTheme.typography.titleLarge).copy(
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                                                    fontWeight = FontWeight.Bold
+                                                )
+                                            )
+                                        }
+                                        innerTextField()
+                                    }
+                                )
+
+                                Spacer(modifier = Modifier.height(if (isCompactHeight) 4.dp else 12.dp))
+
+                                HorizontalDivider(
+                                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)
+                                )
+
+                                Spacer(modifier = Modifier.height(if (isCompactHeight) 4.dp else 12.dp))
+
+                                if (contentValue.text.isEmpty()) {
+                                    Text(
+                                        "Start writing...",
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+                                    )
+                                }
+
+                                var textLayoutResult by remember { mutableStateOf<TextLayoutResult?>(null) }
+
+                                LaunchedEffect(contentValue.selection.start, textLayoutResult) {
+                                    val layout = textLayoutResult ?: return@LaunchedEffect
+                                    if (layout.layoutInput.text.text != annotatedString.text) return@LaunchedEffect
+                                    if (annotatedString.isEmpty()) return@LaunchedEffect
+                                    focusRequester.requestFocus()
+
+                                    val transformedOffset = offsetMapping.originalToTransformed(
+                                        contentValue.selection.start.coerceIn(0, contentValue.text.length)
+                                    ).coerceAtMost(maxOf(annotatedString.length - 1, 0))
+                                    val lineIndex = layout.getLineForOffset(transformedOffset)
+                                    val lineBottom = layout.getLineBottom(lineIndex).toInt()
+                                    val bottomPadding = with(density) { 72.dp.toPx() }.toInt()
+                                    val targetScroll = (lineBottom - scrollState.viewportSize + bottomPadding)
+                                        .coerceIn(0, scrollState.maxValue)
+
+                                    if (targetScroll > scrollState.value) {
+                                        scrollState.animateScrollTo(targetScroll)
+                                    }
+                                }
+
+                                BasicTextField(
+                                    value = contentValue,
+                                    onValueChange = viewModel::updateContentValue,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .heightIn(min = 100.dp)
+                                        .focusRequester(focusRequester)
+                                        .pointerInput(offsetMapping) {
+                                            detectTapGestures { offset ->
+                                                textLayoutResult?.let { layout ->
+                                                    if (layout.layoutInput.text.text != annotatedString.text) return@let
+                                                    val transformedOffset = layout.getOffsetForPosition(offset)
+                                                    val originalOffset = offsetMapping.transformedToOriginal(transformedOffset)
+                                                    viewModel.toggleCheckboxAt(originalOffset)
+                                                }
+                                            }
+                                        },
+                                    textStyle = MaterialTheme.typography.bodyLarge.copy(
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        lineHeight = if (isCompactHeight) 24.sp else 30.sp
+                                    ),
+                                    cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                                    onTextLayout = { textLayoutResult = it },
+                                    visualTransformation = {
+                                        TransformedText(annotatedString, offsetMapping)
+                                    }
+                                )
+
+                                textLayoutResult?.let { layout ->
+                                    if (layout.layoutInput.text.text != annotatedString.text) return@let
+                                    val lines = contentValue.text.split("\n")
+                                    var currentOriginalOffset = 0
+
+                                    lines.forEach { line ->
+                                        val attachment = parseInlineAttachment(line)
+                                        if (attachment != null) {
+                                            val transformedOffset = offsetMapping.originalToTransformed(currentOriginalOffset)
+                                            val safeOffset = transformedOffset.coerceAtMost(maxOf(annotatedString.length - 1, 0))
+                                            val lineIndex = layout.getLineForOffset(safeOffset)
+                                            val top = with(density) { layout.getLineTop(lineIndex).toDp() }
+                                            val height = with(density) {
+                                                (layout.getLineBottom(lineIndex) - layout.getLineTop(lineIndex)).toDp()
+                                            }
+
+                                            when (attachment.type) {
+                                                InlineAttachmentType.IMAGE -> {
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .fillMaxWidth()
+                                                            .offset(y = top)
+                                                            .height(height)
+                                                            .clip(RoundedCornerShape(16.dp))
+                                                            .background(Color.Black.copy(alpha = 0.05f))
+                                                            .clickable {
+                                                                openStoredAttachment(context, attachment.uri, "image/*")
+                                                            }
+                                                    ) {
+                                                        AsyncImage(
+                                                            model = ImageRequest.Builder(context)
+                                                                .data(attachment.uri)
+                                                                .size(Size.ORIGINAL)
+                                                                .crossfade(true)
+                                                                .build(),
+                                                            contentDescription = null,
+                                                            modifier = Modifier.fillMaxSize(),
+                                                            contentScale = ContentScale.Fit,
+                                                            onSuccess = { state ->
+                                                                val drawable = state.result.drawable
+                                                                val width = drawable.intrinsicWidth
+                                                                val height = drawable.intrinsicHeight
+                                                                if (width > 0 && height > 0) {
+                                                                    val measuredHeight = calculateInlineImageHeight(
+                                                                        availableWidth = editorWidth,
+                                                                        intrinsicWidth = width,
+                                                                        intrinsicHeight = height,
+                                                                        maxHeight = maxImageHeight
+                                                                    )
+                                                                    if (imageRowHeights[attachment.uri] != measuredHeight) {
+                                                                        imageRowHeights[attachment.uri] = measuredHeight
+                                                                    }
+                                                                }
+                                                            }
+                                                        )
+                                                    }
+                                                }
+
+                                                InlineAttachmentType.FILE -> {
+                                                    Card(
+                                                        modifier = Modifier
+                                                            .fillMaxWidth()
+                                                            .offset(y = top)
+                                                            .height(height)
+                                                            .clickable {
+                                                                openStoredAttachment(context, attachment.uri, "*/*")
+                                                            },
+                                                        shape = RoundedCornerShape(12.dp),
+                                                        colors = CardDefaults.cardColors(
+                                                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.85f)
+                                                        )
+                                                    ) {
+                                                        Row(
+                                                            modifier = Modifier
+                                                                .fillMaxSize()
+                                                                .padding(horizontal = 14.dp),
+                                                            verticalAlignment = Alignment.CenterVertically
+                                                        ) {
+                                                            Icon(
+                                                                Icons.Outlined.InsertDriveFile,
+                                                                contentDescription = null,
+                                                                tint = MemolySecondary
+                                                            )
+                                                            Spacer(modifier = Modifier.width(12.dp))
+                                                            Column {
+                                                                Text(
+                                                                    attachment.fileName ?: "File",
+                                                                    style = MaterialTheme.typography.bodyMedium,
+                                                                    fontWeight = FontWeight.SemiBold
+                                                                )
+                                                                Text(
+                                                                    "Tap to open",
+                                                                    style = MaterialTheme.typography.labelSmall,
+                                                                    color = Color.Gray
+                                                                )
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        } else {
+                                            val checkboxIndex = line.indexOfFirst { it == '☐' || it == '☑' }
+                                            if (checkboxIndex >= 0 && line.take(checkboxIndex).isBlank()) {
+                                                val checkboxOffset = currentOriginalOffset + checkboxIndex
+                                                val transformedOffset = offsetMapping.originalToTransformed(checkboxOffset)
+                                                val lineIndex = layout.getLineForOffset(
+                                                    transformedOffset.coerceAtMost(maxOf(annotatedString.length - 1, 0))
+                                                )
+                                                val top = with(density) { layout.getLineTop(lineIndex).toDp() }
+                                                val height = with(density) {
+                                                    (layout.getLineBottom(lineIndex) - layout.getLineTop(lineIndex)).toDp()
+                                                }
+                                                val left = with(density) {
+                                                    layout.getHorizontalPosition(transformedOffset, true).toDp()
+                                                }
+
+                                                Box(
+                                                    modifier = Modifier
+                                                        .offset(x = left - 10.dp, y = top)
+                                                        .width(48.dp)
+                                                        .height(height)
+                                                        .clickable {
+                                                            viewModel.toggleCheckboxAt(checkboxOffset)
+                                                        }
+                                                )
+                                            }
+                                        }
+                                        currentOriginalOffset += line.length + 1
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    if (!isCompactHeight) {
+                        EditorToolbar(
+                            isListMode = isListMode,
+                            onFileClick = { filePickerLauncher.launch("*/*") },
+                            onImageClick = {
+                                imagePickerLauncher.launch(
+                                    PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                                )
+                            },
+                            onTagClick = { showTagDialog = true },
+                            onListToggle = { viewModel.toggleListMode() },
+                            onReminderClick = { showReminderPicker = true },
+                            modifier = Modifier.padding(top = 16.dp, bottom = 12.dp)
+                        )
+                    } else {
+                        Spacer(modifier = Modifier.height(8.dp))
+                    }
                 }
             }
-
-            EditorToolbar(
-                isListMode = isListMode,
-                onFileClick = { filePickerLauncher.launch("*/*") },
-                onImageClick = {
-                    imagePickerLauncher.launch(
-                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
-                    )
-                },
-                onTagClick = { showTagDialog = true },
-                onListToggle = { viewModel.toggleListMode() },
-                onReminderClick = { showReminderPicker = true }
-            )
         }
     }
 }
 
-
+@Composable
+fun EditorSideToolbar(
+    isListMode: Boolean,
+    onFileClick: () -> Unit,
+    onImageClick: () -> Unit,
+    onTagClick: () -> Unit,
+    onListToggle: () -> Unit,
+    onReminderClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        modifier = modifier.width(56.dp).wrapContentHeight(),
+        shape = RoundedCornerShape(24.dp),
+        color = Color(0xFFFFF5CF).copy(alpha = 0.92f),
+        shadowElevation = 8.dp
+    ) {
+        Column(
+            modifier = Modifier.padding(vertical = 8.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            IconButton(onClick = onFileClick) {
+                Icon(Icons.Outlined.AddCircleOutline, contentDescription = "Add File", tint = Color.Black)
+            }
+            IconButton(onClick = onImageClick) {
+                Icon(Icons.Outlined.Image, contentDescription = "Add Image", tint = Color.Black)
+            }
+            IconButton(onClick = onTagClick) {
+                Icon(Icons.Outlined.Tag, contentDescription = "Tags", tint = Color.Black)
+            }
+            IconButton(
+                onClick = onListToggle,
+                modifier = Modifier.background(
+                    if (isListMode) Color.Black.copy(alpha = 0.1f) else Color.Transparent,
+                    RoundedCornerShape(12.dp)
+                )
+            ) {
+                Icon(
+                    imageVector = if (isListMode) Icons.Filled.CheckBox else Icons.Outlined.CheckBoxOutlineBlank,
+                    contentDescription = "Checklist Mode",
+                    tint = Color.Black
+                )
+            }
+            Spacer(modifier = Modifier.height(4.dp))
+            IconButton(
+                onClick = onReminderClick,
+                modifier = Modifier.background(Color(0xFFFFC107), CircleShape)
+            ) {
+                Icon(Icons.Filled.NotificationsActive, contentDescription = "Reminder", tint = Color.Black, modifier = Modifier.size(20.dp))
+            }
+        }
+    }
+}
 
 private fun calculateInlineImageHeight(
     availableWidth: Dp,

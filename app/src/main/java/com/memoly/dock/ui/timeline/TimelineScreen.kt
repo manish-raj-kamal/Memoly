@@ -15,6 +15,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
+import androidx.compose.material3.windowsizeclass.WindowHeightSizeClass
+import androidx.compose.material3.windowsizeclass.WindowSizeClass
+import androidx.compose.material3.windowsizeclass.WindowWidthSizeClass
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -52,6 +55,7 @@ import com.memoly.dock.utils.*
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TimelineScreen(
+    windowSizeClass: WindowSizeClass,
     onAddClick: () -> Unit,
     onItemClick: (Long) -> Unit,
     onSettingsClick: () -> Unit,
@@ -69,6 +73,14 @@ fun TimelineScreen(
     val searchFocusRequester = remember { FocusRequester() }
     var showSortMenu by remember { mutableStateOf(false) }
 
+    // Responsive configuration
+    val isExpanded = windowSizeClass.widthSizeClass == WindowWidthSizeClass.Expanded
+    val isMedium = windowSizeClass.widthSizeClass == WindowWidthSizeClass.Medium
+    val isCompactHeight = windowSizeClass.heightSizeClass == WindowHeightSizeClass.Compact
+    
+    // Use rail if we have enough width OR if it's landscape phone (compact height)
+    val useNavigationRail = isExpanded || isMedium || isCompactHeight
+
     // Auto-focus search field when it becomes active
     LaunchedEffect(isSearchActive) {
         if (isSearchActive) {
@@ -76,247 +88,343 @@ fun TimelineScreen(
         }
     }
 
-    Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
-        topBar = {
-            TimelineTopBar(
-                isSearchActive = isSearchActive,
-                searchQuery = searchQuery,
-                onSearchQueryChange = viewModel::updateSearchQuery,
-                onSearchToggle = { viewModel.setSearchActive(!isSearchActive) },
-                onSettingsClick = onSettingsClick,
-                sortOrder = sortOrder,
-                onSortClick = { showSortMenu = true },
-                searchFocusRequester = searchFocusRequester
+    Row(modifier = Modifier.fillMaxSize()) {
+        if (useNavigationRail) {
+            TimelineNavigationRail(
+                selectedTab = selectedTab,
+                onTabSelected = viewModel::setTab,
+                onAddClick = onAddClick
             )
-        },
-        floatingActionButton = {
+        }
+
+        Scaffold(
+            containerColor = MaterialTheme.colorScheme.background,
+            topBar = {
+                TimelineTopBar(
+                    isSearchActive = isSearchActive,
+                    searchQuery = searchQuery,
+                    onSearchQueryChange = viewModel::updateSearchQuery,
+                    onSearchToggle = { viewModel.setSearchActive(!isSearchActive) },
+                    onSettingsClick = onSettingsClick,
+                    sortOrder = sortOrder,
+                    onSortClick = { showSortMenu = true },
+                    searchFocusRequester = searchFocusRequester,
+                    isCompact = isCompactHeight
+                )
+            },
+            floatingActionButton = {
+                if (!useNavigationRail) {
+                    FloatingActionButton(
+                        onClick = onAddClick,
+                        containerColor = MemolyPrimary,
+                        contentColor = Color.White,
+                        shape = CircleShape,
+                        modifier = Modifier
+                            .size(56.dp)
+                            .shadow(
+                                elevation = 8.dp,
+                                shape = CircleShape,
+                                ambientColor = MemolyPrimary.copy(alpha = 0.4f),
+                                spotColor = MemolyPrimary.copy(alpha = 0.4f)
+                            )
+                    ) {
+                        Icon(Icons.Filled.Add, contentDescription = "Add memory", modifier = Modifier.size(28.dp))
+                    }
+                }
+            },
+            bottomBar = {
+                if (!useNavigationRail) {
+                    TimelineBottomBar(
+                        selectedTab = selectedTab,
+                        onTabSelected = viewModel::setTab
+                    )
+                }
+            }
+        ) { padding ->
+            // Sorting Modal Bottom Sheet or Menu
+            if (showSortMenu) {
+                ModalBottomSheet(
+                    onDismissRequest = { showSortMenu = false },
+                    sheetState = rememberModalBottomSheetState()
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 32.dp)
+                    ) {
+                        Text(
+                            "Sort By",
+                            style = MaterialTheme.typography.titleMedium,
+                            modifier = Modifier.padding(16.dp),
+                            fontWeight = FontWeight.Bold
+                        )
+                        SortOrder.entries.forEach { order ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        viewModel.setSortOrder(order)
+                                        showSortMenu = false
+                                    }
+                                    .padding(16.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                RadioButton(selected = sortOrder == order, onClick = null)
+                                Spacer(modifier = Modifier.width(16.dp))
+                                Text(order.label)
+                            }
+                        }
+                    }
+                }
+            }
+
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(padding)
+            ) {
+                // Filter chips
+                if (selectedTab == TabType.REMINDERS) {
+                    RemindersFilterRow(
+                        selectedFilter = remindersFilter,
+                        onFilterSelected = viewModel::setRemindersFilter
+                    )
+                } else if (selectedTab == TabType.HOME) {
+                    FilterChipRow(
+                        selectedFilter = selectedFilter,
+                        onFilterSelected = viewModel::setFilter
+                    )
+                }
+
+                if (items.isEmpty() && pinnedItems.isEmpty()) {
+                    EmptyTimelineState()
+                } else {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.TopCenter
+                    ) {
+                        LazyColumn(
+                            modifier = Modifier
+                                .fillMaxHeight()
+                                .widthIn(max = 800.dp),
+                            contentPadding = PaddingValues(bottom = if (useNavigationRail) 32.dp else 112.dp)
+                        ) {
+                            // 1. Pinned Section
+                            if (pinnedItems.isNotEmpty()) {
+                                item {
+                                    TimelineSectionHeader(title = "Pinned")
+                                }
+                                items(
+                                    items = pinnedItems,
+                                    key = { "pinned_${it.id}" }
+                                ) { memoryItem ->
+                                    TimelineItemRow(
+                                        item = memoryItem,
+                                        onClick = { onItemClick(memoryItem.id) },
+                                        onFavoriteToggle = { viewModel.toggleFavorite(memoryItem.id) },
+                                        onPinToggle = { viewModel.togglePin(memoryItem.id) },
+                                        onDelete = { viewModel.deleteItem(memoryItem) },
+                                        modifier = Modifier.animateItem()
+                                    )
+                                }
+                                item {
+                                    Spacer(modifier = Modifier.height(16.dp))
+                                    HorizontalDivider(
+                                        modifier = Modifier.padding(horizontal = 20.dp),
+                                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                                    )
+                                }
+                            }
+
+                            // 2. Main Timeline Section
+                            val showDateHeaders = selectedTab != TabType.REMINDERS
+                            
+                            if (showDateHeaders) {
+                                val groupedItems = items.groupBy { it.timestamp.toGroupDateString() }
+                                groupedItems.forEach { (date, dateItems) ->
+                                    item(key = "header_$date") {
+                                        TimelineDateHeader(date = date)
+                                    }
+                                    items(
+                                        items = dateItems,
+                                        key = { it.id }
+                                    ) { memoryItem ->
+                                        TimelineItemRow(
+                                            item = memoryItem,
+                                            onClick = { onItemClick(memoryItem.id) },
+                                            onFavoriteToggle = { viewModel.toggleFavorite(memoryItem.id) },
+                                            onPinToggle = { viewModel.togglePin(memoryItem.id) },
+                                            onDelete = { viewModel.deleteItem(memoryItem) },
+                                            modifier = Modifier.animateItem()
+                                        )
+                                    }
+                                }
+                            } else {
+                                // For Reminders or non-chronological sorting, just list them
+                                item {
+                                    TimelineSectionHeader(title = "Reminders")
+                                }
+                                items(
+                                    items = items,
+                                    key = { it.id }
+                                ) { memoryItem ->
+                                    TimelineItemRow(
+                                        item = memoryItem,
+                                        onClick = { onItemClick(memoryItem.id) },
+                                        onFavoriteToggle = { viewModel.toggleFavorite(memoryItem.id) },
+                                        onPinToggle = { viewModel.togglePin(memoryItem.id) },
+                                        onDelete = { viewModel.deleteItem(memoryItem) },
+                                        modifier = Modifier.animateItem()
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TimelineBottomBar(
+    selectedTab: TabType,
+    onTabSelected: (TabType) -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 12.dp)
+            .navigationBarsPadding(),
+        contentAlignment = Alignment.Center
+    ) {
+        Surface(
+            shape = RoundedCornerShape(999.dp),
+            color = MaterialTheme.colorScheme.surface,
+            tonalElevation = 0.dp,
+            shadowElevation = 18.dp,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            NavigationBar(
+                containerColor = Color.Transparent,
+                tonalElevation = 0.dp
+            ) {
+                NavigationBarItem(
+                    selected = selectedTab == TabType.HOME,
+                    onClick = { onTabSelected(TabType.HOME) },
+                    icon = { Icon(Icons.Outlined.Home, contentDescription = null) },
+                    label = { Text("Home", fontSize = 11.sp) },
+                    colors = NavigationBarItemDefaults.colors(
+                        selectedIconColor = MemolyPrimary,
+                        selectedTextColor = MemolyPrimary,
+                        indicatorColor = MemolyPrimary.copy(alpha = 0.12f)
+                    )
+                )
+                NavigationBarItem(
+                    selected = selectedTab == TabType.FAVORITES,
+                    onClick = { onTabSelected(TabType.FAVORITES) },
+                    icon = { Icon(if (selectedTab == TabType.FAVORITES) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder, contentDescription = null) },
+                    label = { Text("Favourites", fontSize = 11.sp) },
+                    colors = NavigationBarItemDefaults.colors(
+                        selectedIconColor = MemolyPrimary,
+                        selectedTextColor = MemolyPrimary,
+                        indicatorColor = MemolyPrimary.copy(alpha = 0.12f)
+                    )
+                )
+                NavigationBarItem(
+                    selected = selectedTab == TabType.REMINDERS,
+                    onClick = { onTabSelected(TabType.REMINDERS) },
+                    icon = { Icon(Icons.Outlined.NotificationsActive, contentDescription = null) },
+                    label = { Text("Reminders", fontSize = 11.sp) },
+                    colors = NavigationBarItemDefaults.colors(
+                        selectedIconColor = MemolyPrimary,
+                        selectedTextColor = MemolyPrimary,
+                        indicatorColor = MemolyPrimary.copy(alpha = 0.12f)
+                    )
+                )
+                NavigationBarItem(
+                    selected = selectedTab == TabType.NOTES,
+                    onClick = { onTabSelected(TabType.NOTES) },
+                    icon = { Icon(Icons.Outlined.StickyNote2, contentDescription = null) },
+                    label = { Text("Notes", fontSize = 11.sp) },
+                    colors = NavigationBarItemDefaults.colors(
+                        selectedIconColor = MemolyPrimary,
+                        selectedTextColor = MemolyPrimary,
+                        indicatorColor = MemolyPrimary.copy(alpha = 0.12f)
+                    )
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun TimelineNavigationRail(
+    selectedTab: TabType,
+    onTabSelected: (TabType) -> Unit,
+    onAddClick: () -> Unit
+) {
+    NavigationRail(
+        containerColor = MaterialTheme.colorScheme.surface,
+        header = {
             FloatingActionButton(
                 onClick = onAddClick,
                 containerColor = MemolyPrimary,
                 contentColor = Color.White,
                 shape = CircleShape,
-                modifier = Modifier
-                    .size(56.dp)
-                    .shadow(
-                        elevation = 8.dp,
-                        shape = CircleShape,
-                        ambientColor = MemolyPrimary.copy(alpha = 0.4f),
-                        spotColor = MemolyPrimary.copy(alpha = 0.4f)
-                    )
+                modifier = Modifier.padding(vertical = 8.dp)
             ) {
-                Icon(Icons.Filled.Add, contentDescription = "Add memory", modifier = Modifier.size(28.dp))
+                Icon(Icons.Filled.Add, contentDescription = "Add memory")
             }
         },
-        bottomBar = {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 18.dp, vertical = 12.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Surface(
-                    shape = RoundedCornerShape(32.dp),
-                    color = MaterialTheme.colorScheme.surface,
-                    tonalElevation = 0.dp,
-                    shadowElevation = 16.dp,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .border(
-                            width = 1.dp,
-                            color = MaterialTheme.colorScheme.outline.copy(alpha = 0.12f),
-                            shape = RoundedCornerShape(32.dp)
-                        )
-                ) {
-                    NavigationBar(
-                        containerColor = Color.Transparent,
-                        tonalElevation = 0.dp
-                    ) {
-                        NavigationBarItem(
-                            selected = selectedTab == TabType.HOME,
-                            onClick = { viewModel.setTab(TabType.HOME) },
-                            icon = { Icon(Icons.Outlined.Home, contentDescription = null) },
-                            label = { Text("Home", fontSize = 11.sp) },
-                            colors = NavigationBarItemDefaults.colors(
-                                selectedIconColor = MemolyPrimary,
-                                selectedTextColor = MemolyPrimary,
-                                indicatorColor = MemolyPrimary.copy(alpha = 0.12f)
-                            )
-                        )
-                        NavigationBarItem(
-                            selected = selectedTab == TabType.FAVORITES,
-                            onClick = { viewModel.setTab(TabType.FAVORITES) },
-                            icon = { Icon(if (selectedTab == TabType.FAVORITES) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder, contentDescription = null) },
-                            label = { Text("Favourites", fontSize = 11.sp) },
-                            colors = NavigationBarItemDefaults.colors(
-                                selectedIconColor = MemolyPrimary,
-                                selectedTextColor = MemolyPrimary,
-                                indicatorColor = MemolyPrimary.copy(alpha = 0.12f)
-                            )
-                        )
-                        NavigationBarItem(
-                            selected = selectedTab == TabType.REMINDERS,
-                            onClick = { viewModel.setTab(TabType.REMINDERS) },
-                            icon = { Icon(Icons.Outlined.NotificationsActive, contentDescription = null) },
-                            label = { Text("Reminders", fontSize = 11.sp) },
-                            colors = NavigationBarItemDefaults.colors(
-                                selectedIconColor = MemolyPrimary,
-                                selectedTextColor = MemolyPrimary,
-                                indicatorColor = MemolyPrimary.copy(alpha = 0.12f)
-                            )
-                        )
-                        NavigationBarItem(
-                            selected = selectedTab == TabType.NOTES,
-                            onClick = { viewModel.setTab(TabType.NOTES) },
-                            icon = { Icon(Icons.Outlined.StickyNote2, contentDescription = null) },
-                            label = { Text("Notes", fontSize = 11.sp) },
-                            colors = NavigationBarItemDefaults.colors(
-                                selectedIconColor = MemolyPrimary,
-                                selectedTextColor = MemolyPrimary,
-                                indicatorColor = MemolyPrimary.copy(alpha = 0.12f)
-                            )
-                        )
-                    }
-                }
-            }
-        }
-    ) { padding ->
-        // Sorting Modal Bottom Sheet or Menu
-        if (showSortMenu) {
-            ModalBottomSheet(
-                onDismissRequest = { showSortMenu = false },
-                sheetState = rememberModalBottomSheetState()
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 32.dp)
-                ) {
-                    Text(
-                        "Sort By",
-                        style = MaterialTheme.typography.titleMedium,
-                        modifier = Modifier.padding(16.dp),
-                        fontWeight = FontWeight.Bold
-                    )
-                    SortOrder.entries.forEach { order ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable {
-                                    viewModel.setSortOrder(order)
-                                    showSortMenu = false
-                                }
-                                .padding(16.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            RadioButton(selected = sortOrder == order, onClick = null)
-                            Spacer(modifier = Modifier.width(16.dp))
-                            Text(order.label)
-                        }
-                    }
-                }
-            }
-        }
-
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-        ) {
-            // Filter chips
-            if (selectedTab == TabType.REMINDERS) {
-                RemindersFilterRow(
-                    selectedFilter = remindersFilter,
-                    onFilterSelected = viewModel::setRemindersFilter
-                )
-            } else if (selectedTab == TabType.HOME) {
-                FilterChipRow(
-                    selectedFilter = selectedFilter,
-                    onFilterSelected = viewModel::setFilter
-                )
-            }
-
-            if (items.isEmpty() && pinnedItems.isEmpty()) {
-                EmptyTimelineState()
-            } else {
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(bottom = 112.dp)
-                ) {
-                    // 1. Pinned Section
-                    if (pinnedItems.isNotEmpty()) {
-                        item {
-                            TimelineSectionHeader(title = "Pinned")
-                        }
-                        items(
-                            items = pinnedItems,
-                            key = { "pinned_${it.id}" }
-                        ) { memoryItem ->
-                            TimelineItemRow(
-                                item = memoryItem,
-                                onClick = { onItemClick(memoryItem.id) },
-                                onFavoriteToggle = { viewModel.toggleFavorite(memoryItem.id) },
-                                onPinToggle = { viewModel.togglePin(memoryItem.id) },
-                                onDelete = { viewModel.deleteItem(memoryItem) },
-                                modifier = Modifier.animateItem()
-                            )
-                        }
-                        item {
-                            Spacer(modifier = Modifier.height(16.dp))
-                            Divider(
-                                modifier = Modifier.padding(horizontal = 20.dp),
-                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
-                            )
-                        }
-                    }
-
-                    // 2. Main Timeline Section
-                    // Group items by date for chronological view (Home/Notes/Favorites)
-                    // For Reminders, we might not want date grouping as they are already sorted by time
-                    val showDateHeaders = selectedTab != TabType.REMINDERS
-                    
-                    if (showDateHeaders) {
-                        val groupedItems = items.groupBy { it.timestamp.toGroupDateString() }
-                        groupedItems.forEach { (date, dateItems) ->
-                            item(key = "header_$date") {
-                                TimelineDateHeader(date = date)
-                            }
-                            items(
-                                items = dateItems,
-                                key = { it.id }
-                            ) { memoryItem ->
-                                TimelineItemRow(
-                                    item = memoryItem,
-                                    onClick = { onItemClick(memoryItem.id) },
-                                    onFavoriteToggle = { viewModel.toggleFavorite(memoryItem.id) },
-                                    onPinToggle = { viewModel.togglePin(memoryItem.id) },
-                                    onDelete = { viewModel.deleteItem(memoryItem) },
-                                    modifier = Modifier.animateItem()
-                                )
-                            }
-                        }
-                    } else {
-                        // For Reminders or non-chronological sorting, just list them
-                        item {
-                            TimelineSectionHeader(title = if (selectedTab == TabType.REMINDERS) "Reminders" else "Memories")
-                        }
-                        items(
-                            items = items,
-                            key = { it.id }
-                        ) { memoryItem ->
-                            TimelineItemRow(
-                                item = memoryItem,
-                                onClick = { onItemClick(memoryItem.id) },
-                                onFavoriteToggle = { viewModel.toggleFavorite(memoryItem.id) },
-                                onPinToggle = { viewModel.togglePin(memoryItem.id) },
-                                onDelete = { viewModel.deleteItem(memoryItem) },
-                                modifier = Modifier.animateItem()
-                            )
-                        }
-                    }
-                }
-            }
-        }
+        modifier = Modifier.windowInsetsPadding(WindowInsets.systemBars.only(WindowInsetsSides.Start + WindowInsetsSides.Vertical))
+    ) {
+        Spacer(modifier = Modifier.weight(1f))
+        NavigationRailItem(
+            selected = selectedTab == TabType.HOME,
+            onClick = { onTabSelected(TabType.HOME) },
+            icon = { Icon(Icons.Outlined.Home, contentDescription = null) },
+            label = { Text("Home") },
+            colors = NavigationRailItemDefaults.colors(
+                selectedIconColor = MemolyPrimary,
+                selectedTextColor = MemolyPrimary,
+                indicatorColor = MemolyPrimary.copy(alpha = 0.12f)
+            )
+        )
+        NavigationRailItem(
+            selected = selectedTab == TabType.FAVORITES,
+            onClick = { onTabSelected(TabType.FAVORITES) },
+            icon = { Icon(if (selectedTab == TabType.FAVORITES) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder, contentDescription = null) },
+            label = { Text("Favourites") },
+            colors = NavigationRailItemDefaults.colors(
+                selectedIconColor = MemolyPrimary,
+                selectedTextColor = MemolyPrimary,
+                indicatorColor = MemolyPrimary.copy(alpha = 0.12f)
+            )
+        )
+        NavigationRailItem(
+            selected = selectedTab == TabType.REMINDERS,
+            onClick = { onTabSelected(TabType.REMINDERS) },
+            icon = { Icon(Icons.Outlined.NotificationsActive, contentDescription = null) },
+            label = { Text("Reminders") },
+            colors = NavigationRailItemDefaults.colors(
+                selectedIconColor = MemolyPrimary,
+                selectedTextColor = MemolyPrimary,
+                indicatorColor = MemolyPrimary.copy(alpha = 0.12f)
+            )
+        )
+        NavigationRailItem(
+            selected = selectedTab == TabType.NOTES,
+            onClick = { onTabSelected(TabType.NOTES) },
+            icon = { Icon(Icons.Outlined.StickyNote2, contentDescription = null) },
+            label = { Text("Notes") },
+            colors = NavigationRailItemDefaults.colors(
+                selectedIconColor = MemolyPrimary,
+                selectedTextColor = MemolyPrimary,
+                indicatorColor = MemolyPrimary.copy(alpha = 0.12f)
+            )
+        )
+        Spacer(modifier = Modifier.weight(1f))
     }
 }
 
@@ -358,7 +466,8 @@ private fun TimelineTopBar(
     onSettingsClick: () -> Unit,
     sortOrder: SortOrder,
     onSortClick: () -> Unit,
-    searchFocusRequester: FocusRequester
+    searchFocusRequester: FocusRequester,
+    isCompact: Boolean = false
 ) {
     TopAppBar(
         title = {
@@ -391,8 +500,8 @@ private fun TimelineTopBar(
                     // "M" logo
                     Box(
                         modifier = Modifier
-                            .size(36.dp)
-                            .clip(RoundedCornerShape(10.dp))
+                            .size(if (isCompact) 28.dp else 36.dp)
+                            .clip(RoundedCornerShape(if (isCompact) 8.dp else 10.dp))
                             .background(
                                 Brush.linearGradient(
                                     colors = listOf(MemolyPrimary, Color(0xFF9C88FF))
@@ -403,14 +512,14 @@ private fun TimelineTopBar(
                         Text(
                             text = "M",
                             color = Color.White,
-                            fontSize = 20.sp,
+                            fontSize = if (isCompact) 16.sp else 20.sp,
                             fontWeight = FontWeight.Bold
                         )
                     }
-                    Spacer(modifier = Modifier.width(12.dp))
+                    Spacer(modifier = Modifier.width(if (isCompact) 8.dp else 12.dp))
                     Text(
                         text = "Memoly",
-                        style = MaterialTheme.typography.headlineSmall,
+                        style = if (isCompact) MaterialTheme.typography.titleLarge else MaterialTheme.typography.headlineSmall,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onBackground
                     )
